@@ -7,6 +7,7 @@ library(cowplot)
 library(VennDiagram) 
 library(patchwork)
 library(gridExtra)
+library(foreach)
 
 #make the file paths relative*****
 
@@ -139,109 +140,56 @@ referenceASV_table$OTU <- toupper(referenceASV_table$OTU)
 datae0041meta_mixID <- datae0041meta_mixID %>%
   left_join(referenceASV_table %>% select(OTU, ASVnum), by = 'OTU')
 
-# Filter data for the specified donor, recipient, and mixture
-# Get ASVs in the donor-only community (well A1)
-# Filter data for the specified donor, recipient, and mixture
-# Get ASVs in the donor-only community (well A1)
+# Filter data for only XEA
+datae0041meta_mixID <- datae0041meta_mixID %>% filter(subject == "XEA")
 
-##################THIS ISN'T WORKINGGGGGGG
-# Create an empty vector to store the final results
-final_colonization_status <- vector("character", length(nrow(datae0041meta_mixID)))
 
-# Loop through each donor+recipient community
-for (i in unique(datae0041meta_mixID$well[datae0041meta_mixID$community_mixture == "donor+recipient"])) {
-  
+# Initialize an empty list to store results
+result_list <- list()
+
+
+# Filter data for the specified donor, recipient, and mixture
+# use foreach to merge output
+# don't use square brackets
+# Loop through each donor+recipient community and add colonization status
+foreach(i=unique(datae0041meta_mixID %>% filter(community_mixture=="donor+recipient") %>% pull(well)), .combine="rbind") %do% {
+  #i = "B1"
   # Subset the data for the current donor+recipient community
   subset_data <- datae0041meta_mixID %>% filter(well == i)
-  
+  i_donor = unique(subset_data$donor)
+  i_recipient = unique(subset_data$recipient)
+  i_replicate = unique(subset_data$replicate)
   # Identify the corresponding donor_only and recipient_only wells
-  corresponding_donor_well <- subset_data$well[subset_data$community_mixture == "donor_only"]
-  corresponding_recipient_well <- subset_data$well[subset_data$community_mixture == "recipient_only"]
+  #corresponding_donor_well <- subset_data$well[subset_data$community_mixture == "donor_only"]
+  corresponding_donor_well <- datae0041meta_mixID %>%
+    filter(donor == i_donor & community_mixture == "donor_only" & replicate == i_replicate)
+  corresponding_recipient_well <- datae0041meta_mixID %>%
+    filter(recipient == i_recipient & community_mixture == "recipient_only" & replicate == i_replicate)
   
   # Identify ASVnums for each well
-  asvs_in_donor_recipient <- subset_data$ASVnum[subset_data$community_mixture == "donor+recipient"]
-  asvs_in_donor <- subset_data$ASVnum[subset_data$well == corresponding_donor_well]
-  asvs_in_recipient <- subset_data$ASVnum[subset_data$well == corresponding_recipient_well]
+  #asvs_in_donor_recipient <- subset_data$ASVnum[subset_data$community_mixture == "donor+recipient"]
+  asvs_in_donor_recipient <- unique(subset_data$ASVnum)
+  #asvs_in_donor <- subset_data$ASVnum[subset_data$well == corresponding_donor_well]
+  asvs_in_donor <- unique(corresponding_donor_well$ASVnum)
+  #asvs_in_recipient <- subset_data$ASVnum[subset_data$well == corresponding_recipient_well]
+  asvs_in_recipient <- unique(corresponding_recipient_well$ASVnum)
   
-  # Apply the conditions and assign colonization_status
-  for (j in 1:nrow(subset_data)) {
-    if (subset_data$community_mixture[j] == "recipient_only" &&
-        subset_data$ASVnum[j] %in% asvs_in_donor_recipient && length(asvs_in_donor) > 0 &&
-        !(subset_data$ASVnum[j] %in% asvs_in_donor)) {
-      final_colonization_status[j] <- "Colonizer_Donor"
-    } else if (subset_data$community_mixture[j] == "donor_only" &&
-               subset_data$ASVnum[j] %in% asvs_in_donor_recipient && length(asvs_in_recipient) > 0 &&
-               !(subset_data$ASVnum[j] %in% asvs_in_recipient)) {
-      final_colonization_status[j] <- "Native_Recipient"
-    } else if (subset_data$community_mixture[j] == "recipient_only" &&
-               subset_data$ASVnum[j] %in% asvs_in_donor_recipient &&
-               subset_data$ASVnum[j] %in% asvs_in_donor) {
-      final_colonization_status[j] <- "Hybrid_All"
-    } else {
-      final_colonization_status[j] <- "Weirdo_None"
-    }
-  }
+  # Colonization Status Update
+  subset_data <- subset_data %>% filter(community_mixture == "donor+recipient") %>%
+    mutate(colonization_status = case_when(
+      asvs_in_donor_recipient %in% asvs_in_donor & !(asvs_in_donor_recipient %in% asvs_in_recipient) ~ "Colonizer_Donor",
+      asvs_in_donor_recipient %in% asvs_in_recipient & !(asvs_in_donor_recipient %in% asvs_in_donor) ~ "Native_Recipient",
+      asvs_in_donor_recipient %in% asvs_in_donor & asvs_in_donor_recipient %in% asvs_in_recipient ~ "Hybrid_D+R",
+      TRUE ~ "Weirdo_Neither"
+    ))
+  
+  # Append the result to the list
+  result_list[[i]] <- subset_data
+  
 }
 
-# Append the final colonization status to the dataframe
-datae0041meta_mixID$colonization_status <- final_colonization_status
-
-#######STILL NOT WORKINGGGGGGG
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-asvs_in_donor <- datae0041meta_mixID %>% 
-  filter(subject == "XEA" & community_mixture == "donor_only") %>%
-  pull(ASVnum)
-
-# Get ASVs in the recipient-only community (well B12)
-asvs_in_recipient <- datae0041meta_mixID %>% 
-  filter(community_mixture == "recipient_only") %>%
-  pull(ASVnum)
-
-#  Get ASVs in the donor + recipient community mixture (well B1)
-asvs_in_donor_recipient <- datae0041meta_mixID %>% 
-  filter(community_mixture == "donor+recipient") %>%
-  pull(ASVnum)
-
-# Append a new column to the donor_data dataframe specifying colonization status
-datae0041meta_mixID$colonization_status <- NA
-
-# use OTU not ASVnum (if there are overlapping ASVs)
-# change to case_when()
-datae0041meta_mixID <- datae0041meta_mixID %>%
-  mutate(colonization_status = case_when(
-    asvs_in_donor_recipient %in% asvs_in_donor & !(asvs_in_donor_recipient %in% asvs_in_recipient) ~ "Colonizer_Donor",
-    asvs_in_donor_recipient %in% asvs_in_recipient & !(asvs_in_donor_recipient %in% asvs_in_donor) ~ "Native_Recipient",
-    asvs_in_donor_recipient %in% asvs_in_donor & asvs_in_donor_recipient %in% asvs_in_recipient ~ "Hybrid_D+R",
-    TRUE ~ "Weirdo_Neither"
-  ))
+# Combine the results into a single data frame
+final_result <- do.call(rbind, result_list)
 
 # plot the number of new colonizers in each community mixture
 

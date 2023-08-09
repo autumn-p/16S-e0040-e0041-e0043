@@ -5,12 +5,15 @@ library(dplyr)
 library(ggplot2)
 library(cowplot)
 library(VennDiagram) 
+library(patchwork)
+library(gridExtra)
 
 # Set up file paths
 outPath = "C:/Users/aparr/16S-e0041-e0043/analysis/out" # out
 dataframePath = "C:/Users/aparr/16S-e0041-e0043/data/ps_all.txt.gz" #raw data
 appendCol_path = "C:/Users/aparr/16S-e0041-e0043/data/metadatae0041.tsv" #metadata
 KCHpalette_path = "C:/Users/aparr/16S-e0041-e0043/config/KCHcolors-Silva-partial.txt" #color palette
+referenceASV = "C:/Users/aparr/16S-e0041-e0043/config/referenceASVs-e0026.txt"
 
 # Read in dataframe
 datae0041raw <- read.table(dataframePath, header=TRUE, stringsAsFactors = FALSE)
@@ -202,14 +205,14 @@ save_plot(paste0(outPath, "/all_replicateReliability_scatterplot.png"), alpha_di
 
 
 
-# Based off naming convention community (ex. "XBB-029") or "blank
+# Based off naming convention community (ex. "XBB-029") or "blank"
 alpha_diversity_table <- alpha_diversity_table %>%
   mutate(community_mixture = case_when(
     # super+recipient portion
     donor == "super-community" & recipient != "blank" ~ "super+recipient",
     # recipient_only portion
     donor == "blank" & recipient != "blank" ~ "recipient_only",
-    # donor_only, should I be excluding super-community****
+    # donor_only portion
     donor != "blank" & recipient == "blank" ~ "donor_only",
     # donor+recipient portion excluding super-community
     donor != "blank" & donor != "super-community" & recipient != "blank" ~ "donor+recipient",
@@ -356,7 +359,325 @@ community_abundance_bar_recipient_wrapped
 save_plot(paste0(outPath, "/community_abundance_bar_recipient_facet_wrapped.png"), community_abundance_bar_recipient_wrapped, base_width = 25, base_height = 25)
 
 
-#Box Plot of Alpha Diversity by Subject:
-#Create a box plot to visualize the distribution of alpha diversity for each subject
+# append the ASV names according to the current reference database
+# referenceASV database e0032 - use the file titled config/referenceASVs-e0026.txt 
+# the column we’re interested in is called ASVnum, and you can join based on the OTU column
 
+# Read in reference ASV table
+referenceASV_table <- read.table(referenceASV, header = TRUE, stringsAsFactors = FALSE)
+
+# Convert OTU to upper case
+referenceASV_table$OTU <- toupper(referenceASV_table$OTU)
+
+# Join the referenceASV table column ASVnum to the metadata table based on the OTU column
+datae0041meta_mixID <- datae0041meta_mixID %>%
+  left_join(referenceASV_table %>% select(OTU, ASVnum), by = 'OTU')
+
+
+# write a function to take a donor community, recipient community, and community mixture, 
+# and return the list of ASVs from the donor community that successfully colonize the 
+# recipient community
+
+# Doesn't previous limit of detection take care of having to do it again here?
+
+# Filter data for the specified donor, recipient, and mixture
+# Get ASVs in the donor-only community (well A1)
+asvs_in_donor <- datae0041meta_mixID %>% 
+  filter(subject == "XEA" & well == "A1" & community_mixture == "donor_only") %>%
+  pull(ASVnum)
+  
+# Get ASVs in the recipient-only community (well B12)
+asvs_in_recipient <- datae0041meta_mixID %>% 
+  filter(subject == "XEA" & well == "B12" & community_mixture == "recipient_only") %>%
+  pull(ASVnum)
+
+#  Get ASVs in the donor + recipient community mixture (well B1)
+asvs_in_donor_recipient <- datae0041meta_mixID %>% 
+  filter(subject == "XEA" & well == "B1" & community_mixture == "donor+recipient") %>%
+  pull(ASVnum)
+
+# Append a new column to the donor_data dataframe specifying colonization status
+
+beyonce_filtered <- datae0041meta_mixID %>%
+  filter(well %in% c("A1", "B1", "B12") & subject == "XEA")
+
+beyonce_B1_filtered$colonization_status <- NA
+
+# use OTU not ASVnum (if there are overlapping ASVs)
+# change to case_when()
+
+beyonce_B1_filtered <- beyonce_B1_filtered %>% filter(community_mixture == "donor+recipient") %>%
+  mutate(colonization_status = case_when(
+    asvs_in_donor_recipient %in% asvs_in_donor & !(asvs_in_donor_recipient %in% asvs_in_recipient) ~ "Colonizer_Donor",
+    asvs_in_donor_recipient %in% asvs_in_recipient & !(asvs_in_donor_recipient %in% asvs_in_donor) ~ "Native_Recipient",
+    asvs_in_donor_recipient %in% asvs_in_donor & asvs_in_donor_recipient %in% asvs_in_recipient ~ "Hybrid_D+R",
+    TRUE ~ "Weirdo_Neither"
+  ))
+  
+
+# plot the number of new colonizers in each community mixture
+
+# Filter data to include only rows with "Colonizer_Donor" colonization status
+count_colonizers <- beyonce_B1_filtered %>%
+  filter(colonization_status == "Colonizer_Donor") %>%
+  group_by(well) %>% summarize(numColonizers=n())
+
+# Create a data frame with the count of colonizers
+df_colonizers <- data.frame(Label = "Colonizer Donors", Count = count_colonizers)
+
+# Create the bar plot
+plot_colonizers <- count_colonizers %>%
+  ggplot() +
+  geom_bar(aes(x = well, y = numColonizers), stat = "identity") +
+  xlab("Colonizer Donors") +
+  ylab("Count of Colonizers") +
+  ggtitle("Number of Donor Colonizers in Well B1 (XBA)") +
+  theme_minimal()
+plot_colonizers
+
+# Save Plot
+#save_plot(paste0(outPath, "/plot_colonizers_B1.png"), plot_colonizers_B1, base_width = 10, base_height = 10)
+
+ggsave(filename = paste0(outPath, "/plot_colonizers_B1.png"), plot = plot_colonizers, width = 10, height = 10, units = "cm")
+
+
+# plot the families of the new colonizers in each community mixture
+# Filter data to include only rows with "Colonizer_Donor" colonization status
+colonizers_per_family <- beyonce_B1_filtered %>%
+  filter(colonization_status == "Colonizer_Donor") %>%
+  count(Family, name = "Count_of_Colonizers")
+
+# Create the bar plot for families of new colonizers
+plot_colonizer_families_B1 <- colonizers_per_family %>%
+  ggplot() +
+  geom_bar(aes(x = Family, y = Count_of_Colonizers, fill = Family), stat = "identity") +
+  xlab("Families of Colonizer Donors") +
+  ylab("Count of Colonizers") +
+  ggtitle("Number of Colonizers per Family in Well B1") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+plot_colonizer_families_B1
+
+# Save Plot
+save_plot(paste0(outPath, "/plot_colonizer_families_B1.png"), plot_colonizer_families_B1, base_width = 15, base_height = 10)
+
+
+# compare the number of new colonizers for different recipient communities
+
+# I would change the fill to recipient right? or group by before i filter in pip in
+
+# Colonization Success Plot - plot #/rel abundance of colonizers in each recipient community 
+# to compare which communities were the most vulnerable to colonization
+# x-axis: recipient community, y-axis: # of colonizers, total % rel abundance of colonizers, 
+# plot each mixture as a point
+
+colonization_success_plot <- beyonce_B1_filtered %>%
+  group_by(subject, well) %>%
+  summarize(total_colonizers = sum(colonization_status == "Colonizer_Donor", na.rm = TRUE),
+            total_relAbundance_colonizers = sum(relAbundance[colonization_status == "Colonizer_Donor"], na.rm = TRUE)) %>%
+  ggplot() +
+  geom_point(aes(x = well, y = total_colonizers, size = total_relAbundance_colonizers)) +
+  xlab("Well") +
+  ylab("# of Colonizers") +
+  ggtitle("Colonization Success Plot") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+colonization_success_plot
+
+
+# Save Plot
+save_plot(paste0(outPath, "/colonization_success_B1.png"), colonization_success_plot, base_width = 15, base_height = 10)
+
+# Relative abundance colonization success
+
+colonization_success_plot_relAbundance <- beyonce_B1_filtered %>%
+  group_by(subject, well) %>%
+  summarize(total_relAbundance_colonizers = sum(as.numeric(relAbundance[colonization_status == "Colonizer_Donor"]), na.rm = TRUE)) %>%
+  ggplot() +
+  geom_point(aes(x = well, y = total_relAbundance_colonizers)) +
+  xlab("Well") +
+  ylab("Relative Abundance of Colonizers") +
+  ggtitle("Colonization Success Plot - Relative Abundance") +
+  theme_minimal() +
+  theme(legend.position = "right")
+colonization_success_plot_relAbundance
+
+# Save plot
+save_plot(paste0(outPath, "/colonization_success_B1_relAbundance.png"), colonization_success_plot_relAbundance, base_width = 15, base_height = 10)
+
+
+
+
+# Rank Abundance Plot - plot to visualize the distribution of colonizers in the recipient 
+# community to identify how dominant the colonizers are in the community
+# calculate the total relative abundance of colonizers in each mixture
+# show the abundance of colonizers in a stacked bar plot
+# (try changing the alpha on the plot based on whether it’s a colonizer)
+# try making a stacked bar plot that only has the colonizers
+
+rank_abundance_plot <- beyonce_B1_filtered %>% 
+  filter(community_mixture == "donor+recipient") %>% 
+  ggplot() +
+  geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family),
+               alpha = ifelse(colonization_status == "Colonizer_Donor", 1, .5)),
+           color = "black", stat = "identity") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  xlab("Community Mixture Type") +
+  ylab("Relative Abundance") +
+  ggtitle("Relative Abundance Distribution of Families based on Community Types") +
+  facet_wrap(~ well + subject, ncol = 4) +
+  guides(alpha = "none")  # To remove alpha from the legend
+rank_abundance_plot
+
+# Save plot
+save_plot(paste0(outPath, "/rank_abundance_plot_B1.png"), rank_abundance_plot, base_width = 15, base_height = 10)
+
+# Donor Abundance Plot - plot to visualize the distribution of donors 
+# Calculate the number of unique asv values
+unique_donor_asv_count <- beyonce_filtered %>%
+  filter(community_mixture == "donor_only") %>%
+  distinct(ASVnum) %>%
+  nrow()
+# Stacked bar plot
+donor_abundance_plot <- beyonce_filtered %>% 
+  filter(community_mixture == "donor_only") %>% 
+  ggplot() +
+  geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
+           color = "black", stat = "identity") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  xlab("Community Mixture Type") +
+  ylab("Relative Abundance") +
+  ggtitle("Relative Abundance Distribution of Donor Community") +
+  geom_text(aes(x = 1, y = -0.1, label = paste(unique_donor_asv_count, "Species")),
+            vjust = -1, hjust = 0.5, size = 4) 
+donor_abundance_plot
+# Save plot
+save_plot(paste0(outPath, "/donor_abundance_plot_A1_v2.png"), donor_abundance_plot, base_width = 15, base_height = 10)
+
+
+# Recipient Abundance Plot - plot to visualize the distribution of recipients 
+# Calculate the number of unique asv values
+unique_recipient_asv_count <- beyonce_filtered %>%
+  filter(community_mixture == "recipient_only") %>%
+  distinct(ASVnum) %>%
+  nrow()
+# Stacked bar plot 
+recipient_abundance_plot <- beyonce_filtered %>% 
+  filter(community_mixture == "recipient_only") %>% 
+  ggplot() +
+  geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
+           color = "black", stat = "identity") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  xlab("Community Mixture Type") +
+  ylab("Relative Abundance") +
+  ggtitle("Relative Abundance Distribution of Recipient Community") +
+  geom_text(aes(x = 1, y = -0.1, label = paste(unique_recipient_asv_count, "Species")),
+            vjust = -1, hjust = 0.5, size = 4) 
+recipient_abundance_plot
+# Save plot
+save_plot(paste0(outPath, "/recipient_abundance_plot_B12.png"), recipient_abundance_plot, base_width = 15, base_height = 10)
+
+
+# Full opacity plot
+# Calculate the number of unique asv values
+unique_mixture_asv_count <- beyonce_filtered %>%
+  filter(community_mixture == "donor+recipient") %>%
+  distinct(ASVnum) %>%
+  nrow()
+# Stacked Bar Plot
+full_opacity_plot <- beyonce_B1_filtered %>% 
+  filter(community_mixture == "donor+recipient") %>% 
+  ggplot() +
+  geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
+           color = "black", stat = "identity") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  xlab("Community Mixture Type") +
+  ylab("Relative Abundance") +
+  ggtitle("Mixture") +
+  geom_text(aes(x = 1, y = -0.1, label = paste(unique_mixture_asv_count, "Species")),
+            vjust = -1, hjust = 0.5, size = 4) +
+  facet_wrap(~ well + subject, ncol = 4) +
+  guides(fill = "none")
+
+# Modulated opacity plot
+modulated_opacity_plot <- beyonce_B1_filtered %>% 
+  filter(community_mixture == "donor+recipient") %>% 
+  ggplot() +
+  geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family),
+               alpha = ifelse(colonization_status == "Colonizer_Donor", 0.5, 1)),
+           color = "black", stat = "identity") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  xlab("Community Mixture Type") +
+  ylab("Relative Abundance") +
+  ggtitle("Colonizers") +
+  facet_wrap(~ well + subject, ncol = 4) +
+  guides(alpha = "none")  # To remove alpha from the legend
+
+# Arrange plots side by side using gridExtra
+arranged_colonizer_abundance_stacked <- grid.arrange(full_opacity_plot, modulated_opacity_plot, ncol = 2)
+
+# Save plot
+save_plot(paste0(outPath, "/arranged_colonizer_abundance_stacked_V2.png"), arranged_colonizer_abundance_stacked, base_width = 20, base_height = 10)
+ggsave(
+  filename = paste0(outPath, "/arranged_colonizer_abundance_stacked_V2.png"),
+  plot = arranged_colonizer_abundance_stacked,
+  width = 20,
+  height = 10
+)
+
+# Scatter Plot
+
+
+
+# Shared Colonizers - a plot to compare the overlap of colonizers between different recipient 
+# communities to show which colonizers are consistently successful across various communities
+# bar plot - # of times each ASV appears in the list of successful colonizers, compared to the 
+# of times it appears
+# could also try this at the family level
+
+data_shared_colonizers <- beyonce_B1_filtered %>%
+  filter(colonization_status == "Colonizer_Donor") %>%
+  group_by(ASVnum, community_mixture) %>%
+  summarize(count = n()) %>%
+  ungroup()
+
+# Create the Shared Colonizers plot
+shared_colonizers_plot <- data_shared_colonizers %>% 
+  ggplot() +
+  geom_bar(aes(x = ASVnum, y = count, fill = community_mixture), stat = "identity", position = "dodge") +
+  xlab("ASV") +
+  ylab("Count of Appearances") +
+  ggtitle("Shared Colonizers - Overlap of Successful Colonizers") +
+  theme_minimal() +
+  theme(legend.position = "top", legend.title = element_blank())
+shared_colonizers_plot
+
+
+
+
+# Differential Abundance Analysis - identify ASVs that are significantly enriched or depleted 
+# in the recipient community after colonization
+# maybe we can start by ID-ing ASVs in the recipient communities that disappear in the 
+# community mixtures? do they consistently disappear?
+
+
+# Identify ASVs that disappear going from preAbx to postAbxV1
+disappeared_asvs_V1 <- beyonce_B1_filtered %>% anti_join(recipient == "XEA-preAbx", recipient == "XEA-postAbxV1", by = "ASVnum")
+
+# Identify ASVs that disappear going from preAbx to postAbxV2
+disappeared_asvs_V2 <- beyonce_B1_filtered %>% anti_join(recipient == "XEA-preAbx", recipient == "XEA-postAbxV2", by = "ASVnum")
+
+
+
+
+
+
+
+
+
+# Indicator Species Analysis - identify indicator species that are strongly associated with 
+# successful colonization in different recipient communities
+# maybe we can also try annotating each species in the donor communities and seeing if they 
+# can colonize each of the three recipient communities?
 
