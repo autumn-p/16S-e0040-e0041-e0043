@@ -12,11 +12,11 @@ library(foreach)
 #make the file paths relative*****
 
 # Set up file paths
-outPath = "C:/Users/aparr/16S-e0041-e0043/analysis/out-cleaned" #out
-dataframePath = "C:/Users/aparr/16S-e0041-e0043/data/ps_all.txt.gz" #raw data
-appendCol_path = "C:/Users/aparr/16S-e0041-e0043/data/metadatae0041.tsv" #metadata
-KCHpalette_path = "C:/Users/aparr/16S-e0041-e0043/config/KCHcolors-Silva-partial.txt" #color palette
-referenceASV = "C:/Users/aparr/16S-e0041-e0043/config/referenceASVs-e0026.txt" #for appending ASV codes
+outPath = "analysis/out-cleaned" #out
+dataframePath = "data/ps_all.txt.gz" #raw data
+appendCol_path = "data/metadatae0041.tsv" #metadata
+KCHpalette_path = "config/KCHcolors-Silva-partial.txt" #color palette
+referenceASV = "config/referenceASVs-e0026.txt" #for appending ASV codes
 
 # Read in dataframe
 datae0041raw <- read.table(dataframePath, header=TRUE, stringsAsFactors = FALSE)
@@ -100,8 +100,8 @@ datae0041meta_mixID <- datae0041meta %>%
 alpha_diversity_scatterBoxPlot_grouped <- alpha_diversity_table %>% 
   group_by(community_mixture) %>%
   ggplot() +
-  geom_jitter(aes(x = community_mixture, y = alpha_diversity_e0041, fill = interaction(community_mixture)), color = "black") +
   geom_boxplot(aes(x = community_mixture, y = alpha_diversity_e0041, fill = interaction(community_mixture)), color = "black") +
+  geom_jitter(aes(x = community_mixture, y = alpha_diversity_e0041, fill = interaction(community_mixture)), color = "black") +
   xlab("Community Mixture") +
   ylab("Alpha Diversity") +
   ggtitle("Alpha Diversity by Community") +
@@ -141,18 +141,18 @@ datae0041meta_mixID <- datae0041meta_mixID %>%
   left_join(referenceASV_table %>% select(OTU, ASVnum), by = 'OTU')
 
 # Filter data for only XEA
-datae0041meta_mixID <- datae0041meta_mixID %>% filter(subject == "XEA")
+datae0041meta_mixID <- datae0041meta_mixID %>% filter(subject == "XEA", !is.na(ASVnum))
 
 
 # Initialize an empty list to store results
-result_list <- list()
+#result_list <- list()
 
 
 # Filter data for the specified donor, recipient, and mixture
 # use foreach to merge output
 # don't use square brackets
 # Loop through each donor+recipient community and add colonization status
-foreach(i=unique(datae0041meta_mixID %>% filter(community_mixture=="donor+recipient") %>% pull(well)), .combine="rbind") %do% {
+dataASVorigin <- foreach(i=unique(datae0041meta_mixID %>% filter(community_mixture=="donor+recipient") %>% pull(well)), .combine="rbind") %do% {
   #i = "B1"
   # Subset the data for the current donor+recipient community
   subset_data <- datae0041meta_mixID %>% filter(well == i)
@@ -182,14 +182,15 @@ foreach(i=unique(datae0041meta_mixID %>% filter(community_mixture=="donor+recipi
       asvs_in_donor_recipient %in% asvs_in_donor & asvs_in_donor_recipient %in% asvs_in_recipient ~ "Hybrid_D+R",
       TRUE ~ "Weirdo_Neither"
     ))
-  
   # Append the result to the list
-  result_list[[i]] <- subset_data
+  #result_list[[i]] <- subset_data
+  
+  return(subset_data)
   
 }
 
 # Combine the results into a single data frame
-final_result <- do.call(rbind, result_list)
+# final_result <- do.call(rbind, result_list)
 
 # plot the number of new colonizers in each community mixture
 
@@ -373,27 +374,111 @@ disappeared_asvs_V2 <- datae0041meta_mixID %>% anti_join(recipient == "XEA-preAb
 # can colonize each of the three recipient communities?
 
 # Create new columns for ability to colonize pre/postv1/postv2
-datae0041meta_mixID <- datae0041meta_mixID %>%
-  filter(community_mixture == "donor+recipient") %>%
+dataASVorigin1.0 <- dataASVorigin %>%
+  filter(community_mixture == "donor+recipient" & colonization_status == "Colonizer_Donor") %>%
   mutate(
     can_colonize_preAbx = ifelse(
-      ASVnum %in% asvs_in_donor & recipient == "XEA-pre",
-      "Yes",
-      "No"
+      recipient == "XEA-pre",
+      "1",
+      "0"
     ),
     can_colonize_postAbxV1 = ifelse(
-      ASVnum %in% asvs_in_donor & recipient == "XEA-post-V1",
-      "Yes",
-      "No"
+      recipient == "XEA-post-V1",
+      "1",
+      "0"
     ),
     can_colonize_postAbxV2 = ifelse(
-      ASVnum %in% asvs_in_donor & recipient == "XEA-post-V2",
-      "Yes",
-      "No"
+      recipient == "XEA-post-V2",
+      "1",
+      "0"
     )
   )
 
 
 
+# Start with datae0041meta
+# Filter data for the specified donor, recipient, and mixture
+# use foreach to merge output
+# don't use square brackets
+# Loop through each donor+recipient community and add colonization status
+dataASVorigin <- foreach(i=unique(datae0041meta_mixID %>% filter(community_mixture=="donor+recipient") %>% pull(well)), .combine="rbind") %do% {
+  #i = "B1"
+  # Subset the data for the current donor+recipient community
+  subset_data <- datae0041meta_mixID %>% filter(well == i)
+  i_donor = unique(subset_data$donor)
+  i_recipient = unique(subset_data$recipient)
+  i_replicate = unique(subset_data$replicate)
+  # Identify the corresponding donor_only and recipient_only wells
+  #corresponding_donor_well <- subset_data$well[subset_data$community_mixture == "donor_only"]
+  corresponding_donor_well <- datae0041meta_mixID %>%
+    filter(donor == i_donor & community_mixture == "donor_only" & replicate == i_replicate)
+  corresponding_recipient_well <- datae0041meta_mixID %>%
+    filter(recipient == i_recipient & community_mixture == "recipient_only" & replicate == i_replicate)
+  
+  # Identify ASVnums for each well
+  #asvs_in_donor_recipient <- subset_data$ASVnum[subset_data$community_mixture == "donor+recipient"]
+  asvs_in_donor_recipient <- unique(subset_data$ASVnum)
+  #asvs_in_donor <- subset_data$ASVnum[subset_data$well == corresponding_donor_well]
+  asvs_in_donor <- unique(corresponding_donor_well$ASVnum)
+  #asvs_in_recipient <- subset_data$ASVnum[subset_data$well == corresponding_recipient_well]
+  asvs_in_recipient <- unique(corresponding_recipient_well$ASVnum)
+  
+  # Colonization Status Update
+  subset_data <- subset_data %>% filter(community_mixture == "donor+recipient") %>%
+    mutate(colonization_status = case_when(
+      asvs_in_donor_recipient %in% asvs_in_donor & !(asvs_in_donor_recipient %in% asvs_in_recipient) ~ "Colonizer_Donor",
+      asvs_in_donor_recipient %in% asvs_in_recipient & !(asvs_in_donor_recipient %in% asvs_in_donor) ~ "Native_Recipient",
+      asvs_in_donor_recipient %in% asvs_in_donor & asvs_in_donor_recipient %in% asvs_in_recipient ~ "Hybrid_D+R",
+      TRUE ~ "Weirdo_Neither"
+    ))
+  # Append the result to the list
+  #result_list[[i]] <- subset_data
+  
+  return(subset_data)
+  
+}  
+  
 
+# Filter data for donor_only communities
+donor_only_wells <- datae0041meta_mixID %>%
+  filter(community_mixture == "donor_only")
+
+# Loop through each donor_only well
+dataDonorResults <- foreach(i = unique(donor_only_wells$well)) {
+  # Subset the data for the current donor_only well
+  subset_data <- donor_only_wells %>% filter(well == i)
+  i_donor = unique(subset_data$donor)
+  i_recipient = unique(subset_data$recipient)
+  i_replicate = unique(subset_data$replicate)
+  
+  # Identify the corresponding recipient_only well
+  corresponding_recipient_well <- datae0041meta_mixID %>%
+    filter(recipient == i_recipient & community_mixture == "recipient_only" & replicate == i_replicate)
+  
+  # Identify ASVnums for each well
+  asvs_in_donor <- unique(subset_data$ASVnum)
+  asvs_in_recipient <- unique(corresponding_recipient_well$ASVnum)
+  
+  # Colonization Status Update
+  subset_data <- subset_data %>%
+    mutate(colonization_status = case_when(
+      asvs_in_donor %in% asvs_in_recipient ~ "Colonizer_Donor",
+      TRUE ~ "Failed_Colonizer"
+    ))
+  
+  # Append the result to the list
+  return(subset_data)
+}
+
+
+
+
+
+
+  #for each combination of donor and recipient (and replicate) we're going to pull the community mixture
+  # annotate each ASV in the donor (pull donor, and donor-recipient well) use case list to decide if it colonizing
+#calculate overall average colonization rate per family based on the yes/no values in the can_colonize columns
+  #if i do 1s and 0s I can sum all of the ASV rows within a family together and then divide by the total number of
+  #ASVs in the family
+#make a plot for pre, post v1, post v2 with the percent colonization rate per family
 
