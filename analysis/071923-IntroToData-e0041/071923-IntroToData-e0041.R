@@ -9,11 +9,11 @@ library(patchwork)
 library(gridExtra)
 
 # Set up file paths
-outPath = "C:/Users/aparr/16S-e0041-e0043/analysis/out" # out
-dataframePath = "C:/Users/aparr/16S-e0041-e0043/data/ps_all.txt.gz" #raw data
-appendCol_path = "C:/Users/aparr/16S-e0041-e0043/data/metadatae0041.tsv" #metadata
-KCHpalette_path = "C:/Users/aparr/16S-e0041-e0043/config/KCHcolors-Silva-partial.txt" #color palette
-referenceASV = "C:/Users/aparr/16S-e0041-e0043/config/referenceASVs-e0026.txt"
+outPath = "/analysis/out" # out
+dataframePath = "/data/ps_all.txt.gz" #raw data
+appendCol_path = "data/metadatae0041.tsv" #metadata
+KCHpalette_path = "/config/KCHcolors-Silva-partial.txt" #color palette
+referenceASV = "/config/referenceASVs-e0026.txt"
 
 # Read in dataframe
 datae0041raw <- read.table(dataframePath, header=TRUE, stringsAsFactors = FALSE)
