@@ -222,6 +222,20 @@ alpha_diversity_table <- alpha_diversity_table %>%
 
 # SUMMARY PLOT
 # Alpha Diversity Scatter plot with replicates grouped by community mixture type
+
+alpha_diversity_scatterPlot_grouped <- alpha_diversity_table %>% 
+  group_by(community_mixture) %>%
+  ggplot() +
+  geom_point(aes(x = community_mixture, y = alpha_diversity_e0041, fill = interaction(community_mixture)), color = "black",
+             position=position_jitter(width=0.2)) +
+  xlab("Community Mixture") +
+  ylab("Alpha Diversity") +
+  ggtitle("Alpha Diversity by Community") +
+  theme_bw() +
+  theme(legend.position="none", axis.text.x = element_text(angle = 60, hjust = 1))
+alpha_diversity_scatterPlot_grouped
+
+
 alpha_diversity_scatterPlot_grouped <- alpha_diversity_table %>% 
   group_by(community_mixture) %>%
   ggplot() +
@@ -233,8 +247,20 @@ alpha_diversity_scatterPlot_grouped <- alpha_diversity_table %>%
   theme(legend.position="none", axis.text.x = element_text(angle = 60, hjust = 1))
 alpha_diversity_scatterPlot_grouped
 
+# Alpha Diversity Scatter plot - POSTER
+alpha_diversity_scatterPlot_communityType <- alpha_diversity_table %>% 
+  group_by(recipient) %>%
+  ggplot() +
+  geom_jitter(aes(x = recipient, y = alpha_diversity_e0041, fill = interaction(recipient)), color = "black") +
+  xlab("Recipient") +
+  ylab("Alpha Diversity") +
+  ggtitle("Alpha Diversity by Community") +
+  theme_bw() +
+  theme(legend.position="none", axis.text.x = element_text(angle = 60, hjust = 1))
+alpha_diversity_scatterPlot_communityType
+
 # Save plot
-save_plot(paste0(outPath, "/replicateMixGrouped_scatterplot.png"), alpha_diversity_scatterPlot_grouped, base_width = 10, base_height = 10)
+save_plot(paste0(outPath, "/alpha_diversity_scatterPlot_communityType.png"), alpha_diversity_scatterPlot_communityType, base_width = 10, base_height = 10)
 
 # SUMMARY PLOT
 # Alpha Diversity boxplot on Scatter plot with replicates grouped by community mixture type
@@ -533,7 +559,7 @@ rank_abundance_plot
 # Save plot
 save_plot(paste0(outPath, "/rank_abundance_plot_B1.png"), rank_abundance_plot, base_width = 15, base_height = 10)
 
-# Donor Abundance Plot - plot to visualize the distribution of donors 
+# Donor Abundance Plot - plot to visualize the distribution of donors - POSTER
 # Calculate the number of unique asv values
 unique_donor_asv_count <- beyonce_filtered %>%
   filter(community_mixture == "donor_only") %>%
