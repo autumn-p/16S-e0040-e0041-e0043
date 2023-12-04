@@ -1,5 +1,4 @@
 #Import libraries
-library(gridExtra)
 library(tidyverse)
 library(dplyr)
 library(ggplot2)
