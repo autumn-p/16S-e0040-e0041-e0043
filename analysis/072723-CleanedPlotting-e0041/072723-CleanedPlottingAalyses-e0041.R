@@ -9,8 +9,6 @@ library(patchwork)
 library(gridExtra)
 library(foreach)
 
-#make the file paths relative*****
-
 # Set up file paths
 outPath = "analysis/out-cleaned" #out
 dataframePath = "data/ps_all.txt.gz" #raw data
@@ -144,8 +142,67 @@ datae0041meta_mixID <- datae0041meta_mixID %>%
 datae0041meta_mixID <- datae0041meta_mixID %>% filter(subject == "XEA", !is.na(ASVnum))
 
 
-# Initialize an empty list to store results
-#result_list <- list()
+# Create an empty data frame to store the results
+result_data <- tibble()
+
+#Annotate every donor ASV rather than every mixture ASV*****
+#annotate unsuccessful colonizations too
+dataColonizationSuccess <- foreach(i=unique(datae0041meta %>% filter(donor != "blank" & recipient == "blank") %>% pull(well)), .combine="rbind") %do% {
+  print(i)
+  # Subset the data for the current donor community
+  subset_data <- datae0041meta %>% filter(well == i)
+  i_donor = unique(subset_data$donor)
+  i_replicate = unique(subset_data$replicate)
+  
+  corresponding_preabx_well <- datae0041meta %>%
+    filter(donor == i_donor & recipient == "XEA-pre" & replicate == i_replicate)
+  corresponding_postabxV1_well <- datae0041meta %>%
+    filter(donor == i_donor & recipient == "XEA-post-V1" & replicate == i_replicate)
+  corresponding_preabx_only_well <- datae0041meta %>%
+    filter(donor == "blank" & recipient == "XEA-pre" & replicate == i_replicate)
+  corresponding_postabxV1_only_well <- datae0041meta %>%
+    filter(donor == "blank" & recipient == "XEA-post-V1" & replicate == i_replicate)
+  
+  # Identify ASVnums for each well
+  asvs_in_donor <- unique(subset_data$OTU)
+  asvs_in_preabx_mix <- unique(corresponding_preabx_well$OTU)
+  asvs_in_postabxV1_mix <- unique(corresponding_postabxV1_well$OTU)
+  
+  # two columns - does it colonize pre successfully and second does it colonize post successfully
+  # third annotation with universal/conditional
+  # colonizes pre - abx T/F present in donor, not in recipient, present in mix preabx
+  # can't tell case (in d and r but not mix)
+  
+  # Check colonization status
+  colonization_status <- tibble(
+    well = rep(i, length(asvs_in_donor)),
+    OTU = asvs_in_donor,
+    Colonization_Preabx = asvs_in_donor %in% asvs_in_preabx_mix & !(asvs_in_donor %in% corresponding_preabx_only_well$OTU),
+    Colonization_PostabxV1 = asvs_in_donor %in% asvs_in_postabxV1_mix & !(asvs_in_donor %in% corresponding_postabxV1_only_well$OTU),
+    Uncertain_Colonization = (asvs_in_donor %in% asvs_in_preabx_mix & asvs_in_donor %in% corresponding_preabx_only_well$OTU) |
+                                (asvs_in_donor %in% asvs_in_postabxV1_mix & asvs_in_donor %in% corresponding_postabxV1_only_well$OTU),
+    Not_Colonizing = !(asvs_in_donor %in% asvs_in_preabx_mix) & !(asvs_in_donor %in% asvs_in_postabxV1_mix)
+  )
+  
+  print(colonization_status)
+  
+  # Append the result to the overall data frame
+  result_data <- bind_rows(result_data, colonization_status)
+}
+  
+# Merge the result_data with the original datae0041meta dataframe based on well and OTU columns
+datae0041meta <- left_join(datae0041meta, result_data, by = c("well", "OTU"))
+
+# Create the donor_colonizer_type column
+datae0041meta <- datae0041meta %>%
+  mutate(donor_colonizer_type = case_when(
+    Uncertain_Colonization ~ "Uncertain_Colonizer",
+    Colonization_Preabx & Colonization_PostabxV1  ~ "Universal_Colonizer",
+    Colonization_Preabx & !Colonization_PostabxV1 | !Colonization_Preabx & Colonization_PostabxV1 ~ "Conditional_Colonizer",
+    Not_Colonizing ~ "Did_Not_Colonize",
+    TRUE ~ NA_character_
+  ))
+
 
 
 # Filter data for the specified donor, recipient, and mixture
@@ -183,17 +240,158 @@ dataASVorigin <- foreach(i=unique(datae0041meta_mixID %>% filter(community_mixtu
       TRUE ~ "Weirdo_Neither"
     ))
   # Append the result to the list
-  #result_list[[i]] <- subset_data
+  result_list[[i]] <- subset_data
   
   return(subset_data)
   
 }
 
 # Combine the results into a single data frame
-# final_result <- do.call(rbind, result_list)
+final_result <- do.call(rbind, result_list)
+# Rename
+datae0041meta_mixID <- final_result
+
+
+
+
+
+
+
+
+
+
+# Filter data for Colonizer_Donor strains only
+colonizer_data <- datae0041meta_mixID %>%
+  filter(colonization_status == "Colonizer_Donor")
+
+# Find unique OTUs in the dataset
+unique_otus <- unique(colonizer_data$OTU)
+
+# Iterate through unique OTUs to determine colonizer_type
+for (otu in unique_otus) {
+  # Filter data for the current OTU
+  otu_data <- colonizer_data %>%
+    filter(OTU == otu)
+  
+  # Check if the OTU is "Universal" or "Condition-Dependent"
+  colonizer_type <- case_when(
+    any(otu_data$recipient == "XEA-pre") && any(otu_data$recipient %in% c("XEA-post-V1", "XEA-post-V2")) ~ "Universal",
+    any(otu_data$recipient == "XEA-pre") || any(otu_data$recipient %in% c("XEA-post-V1", "XEA-post-V2")) ~ "Condition-Dependent",
+    TRUE ~ "Unknown" 
+  )
+  
+  # Add colonizer_type to the dataframe
+  colonizer_data <- colonizer_data %>%
+    mutate(colonizer_type = colonizer_type)
+}
+
+# Check the resulting dataframe to see if it's even right
+colonizer_data
+
+
+
+
+# Filter data for Colonizer_Donor strains only
+colonizer_data <- datae0041meta_mixID %>%
+  filter(colonization_status == "Colonizer_Donor")
+
+# Create a new dataframe to store the results
+colonizer_type_data <- data.frame()
+
+# Find unique OTUs in the dataset
+unique_otus <- unique(colonizer_data$OTU)
+
+# Iterate through unique OTUs to determine colonizer_type
+for (otu in unique_otus) {
+  # Filter data for the current OTU
+  otu_data <- colonizer_data %>%
+    filter(OTU == otu)
+  
+  # Check if the OTU is "Universal" or "Condition-Dependent"
+  colonizer_type <- case_when(
+    any(otu_data$recipient == "XEA-pre") && any(otu_data$recipient %in% c("XEA-post-V1", "XEA-post-V2")) ~ "Universal",
+    any(otu_data$recipient == "XEA-pre") || any(otu_data$recipient %in% c("XEA-post-V1", "XEA-post-V2")) ~ "Condition-Dependent",
+    TRUE ~ "Unknown" # You can specify another category for OTUs that don't meet the criteria.
+  )
+  
+  # Add colonizer_type to the dataframe
+  otu_data <- otu_data %>%
+    mutate(colonizer_type = colonizer_type)
+  
+  # Append the result to the new dataframe
+  colonizer_type_data <- bind_rows(colonizer_type_data, otu_data)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Colonizer Classification Table where I determine for each of the Colonizer_Donor whether they are Universal
+# Colonizers, able to colonize pre- and post-abx, or Condition Dependent Colonizers, only able to colonize pre 
+# or post
+# Filter data for Colonizer_Donor strains only
+colonizer_data <- datae0041meta_mixID %>%
+  filter(colonization_status == "Colonizer_Donor")
+
+# Create a new dataframe to store the results
+colonizer_type_data <- data.frame()
+
+# Find OTUs that appear at least twice in the dataset
+otu_counts <- table(colonizer_data$OTU)
+repeated_otus <- names(otu_counts[otu_counts >= 2])
+
+# Iterate through repeated OTUs to determine colonizer_type
+for (otu in repeated_otus) {
+  # Filter data for the current OTU
+  otu_data <- colonizer_data %>%
+    filter(OTU == otu)
+  
+  # Check if the OTU is "Universal" or "Condition-Dependent"
+  if (any(otu_data$recipient == "XEA-pre") &&
+      any(otu_data$recipient %in% c("XEA-post-V1", "XEA-post-V2"))) {
+    colonizer_type <- "Universal"
+  } else if (any(otu_data$recipient == "XEA-pre") || 
+             any(otu_data$recipient %in% c("XEA-post-V1", "XEA-post-V2"))) {
+    colonizer_type <- "Condition-Dependent"
+  } else {
+    colonizer_type <- "Unknown" # You can specify another category for OTUs that don't meet the criteria.
+  }
+  
+  # Add colonizer_type to the dataframe
+  otu_data$colonizer_type <- colonizer_type
+  colonizer_type_data <- rbind(colonizer_type_data, otu_data)
+}
+
+# Check the resulting dataframe to see if I even did this right
+colonizer_type_data
+
+# Create the stacked bar plot based on sum of colonizers (stack by colonization type--either Universal or 
+#Condition-Dependent) and plot against Bacterial Families
+colonizer_stacked_bar_plot <- colonizer_type_data %>% ggplot() +
+  geom_bar(aes(x = Family, fill = colonizer_type), position = "stack") +
+  labs(
+    x = "Family of Bacteria",
+    y = "Count of Colonizers",
+    fill = "Colonizer Type"
+  ) +
+  scale_fill_manual(values = c("Universal" = "blue", "Condition-Dependent" = "red")) +
+  theme_minimal() +
+  theme(legend.position = "top") 
+colonizer_stacked_bar_plot
+# Save Plot
+ggsave(filename = paste0(outPath, "/plot_colonizer_type_only.png"), plot = colonizer_stacked_bar_plot, width = 15, height = 10, units = "cm")
+
 
 # plot the number of new colonizers in each community mixture
-
 # Filter data to include only rows with "Colonizer_Donor" colonization status
 count_colonizers <- datae0041meta_mixID %>%
   filter(colonization_status == "Colonizer_Donor") %>%
@@ -396,83 +594,10 @@ dataASVorigin1.0 <- dataASVorigin %>%
 
 
 
-# Start with datae0041meta
-# Filter data for the specified donor, recipient, and mixture
-# use foreach to merge output
-# don't use square brackets
-# Loop through each donor+recipient community and add colonization status
-dataASVorigin <- foreach(i=unique(datae0041meta_mixID %>% filter(community_mixture=="donor+recipient") %>% pull(well)), .combine="rbind") %do% {
-  #i = "B1"
-  # Subset the data for the current donor+recipient community
-  subset_data <- datae0041meta_mixID %>% filter(well == i)
-  i_donor = unique(subset_data$donor)
-  i_recipient = unique(subset_data$recipient)
-  i_replicate = unique(subset_data$replicate)
-  # Identify the corresponding donor_only and recipient_only wells
-  #corresponding_donor_well <- subset_data$well[subset_data$community_mixture == "donor_only"]
-  corresponding_donor_well <- datae0041meta_mixID %>%
-    filter(donor == i_donor & community_mixture == "donor_only" & replicate == i_replicate)
-  corresponding_recipient_well <- datae0041meta_mixID %>%
-    filter(recipient == i_recipient & community_mixture == "recipient_only" & replicate == i_replicate)
-  
-  # Identify ASVnums for each well
-  #asvs_in_donor_recipient <- subset_data$ASVnum[subset_data$community_mixture == "donor+recipient"]
-  asvs_in_donor_recipient <- unique(subset_data$ASVnum)
-  #asvs_in_donor <- subset_data$ASVnum[subset_data$well == corresponding_donor_well]
-  asvs_in_donor <- unique(corresponding_donor_well$ASVnum)
-  #asvs_in_recipient <- subset_data$ASVnum[subset_data$well == corresponding_recipient_well]
-  asvs_in_recipient <- unique(corresponding_recipient_well$ASVnum)
-  
-  # Colonization Status Update
-  subset_data <- subset_data %>% filter(community_mixture == "donor+recipient") %>%
-    mutate(colonization_status = case_when(
-      asvs_in_donor_recipient %in% asvs_in_donor & !(asvs_in_donor_recipient %in% asvs_in_recipient) ~ "Colonizer_Donor",
-      asvs_in_donor_recipient %in% asvs_in_recipient & !(asvs_in_donor_recipient %in% asvs_in_donor) ~ "Native_Recipient",
-      asvs_in_donor_recipient %in% asvs_in_donor & asvs_in_donor_recipient %in% asvs_in_recipient ~ "Hybrid_D+R",
-      TRUE ~ "Weirdo_Neither"
-    ))
-  # Append the result to the list
-  #result_list[[i]] <- subset_data
-  
-  return(subset_data)
-  
-}  
-  
-
-# Filter data for donor_only communities
-donor_only_wells <- datae0041meta_mixID %>%
-  filter(community_mixture == "donor_only")
-
-# Loop through each donor_only well
-dataDonorResults <- foreach(i = unique(donor_only_wells$well)) {
-  # Subset the data for the current donor_only well
-  subset_data <- donor_only_wells %>% filter(well == i)
-  i_donor = unique(subset_data$donor)
-  i_recipient = unique(subset_data$recipient)
-  i_replicate = unique(subset_data$replicate)
-  
-  # Identify the corresponding recipient_only well
-  corresponding_recipient_well <- datae0041meta_mixID %>%
-    filter(recipient == i_recipient & community_mixture == "recipient_only" & replicate == i_replicate)
-  
-  # Identify ASVnums for each well
-  asvs_in_donor <- unique(subset_data$ASVnum)
-  asvs_in_recipient <- unique(corresponding_recipient_well$ASVnum)
-  
-  # Colonization Status Update
-  subset_data <- subset_data %>%
-    mutate(colonization_status = case_when(
-      asvs_in_donor %in% asvs_in_recipient ~ "Colonizer_Donor",
-      TRUE ~ "Failed_Colonizer"
-    ))
-  
-  # Append the result to the list
-  return(subset_data)
 }
-
-
-
-
+# The donor_only and recipient_only wells will be used repeatedly in these sets. This means my final dataDonorResults
+# will have rows that are duplicates, except possibly the colonization_status column. Since a single donor well was inoculated into
+# many mixture wells, there will be multiple rows whose colonization status will be recorded for each mixture well the donor was a part of.
 
 
   #for each combination of donor and recipient (and replicate) we're going to pull the community mixture
@@ -482,3 +607,37 @@ dataDonorResults <- foreach(i = unique(donor_only_wells$well)) {
   #ASVs in the family
 #make a plot for pre, post v1, post v2 with the percent colonization rate per family
 
+# Loop through each donor_only well and append a colonization status to the row based on its ability to colonize
+dataDonorResults <- foreach(i = unique(datae0041meta_mixID %>% filter(community_mixture == "donor_only") %>% pull(well)), .combine="rbind") %do% {
+  #i = "A1"
+  # Subset the data for the current donor_only well
+  subset_donor_data <- datae0041meta_mixID %>% filter(well == i)
+  i_donor = unique(subset_donor_data$donor)
+  i_recipient = unique(subset_donor_data$recipient)
+  i_replicate = unique(subset_donor_data$replicate)
+  
+  # Identify the corresponding recipient_only well
+  corresponding_mixture_well <- datae0041meta_mixID %>% 
+    filter(community_mixture == "donor+recipient" & donor == i_donor & replicate == i_replicate)
+  corresponding_recipient_well <- datae0041meta_mixID %>%
+    filter(recipient == i_recipient & community_mixture == "recipient_only" & replicate == i_replicate)
+                              
+  # Identify ASVnums for each well
+  asvs_in_donor <- unique(subset_donor_data$ASVnum)
+  asvs_in_recipient <- unique(corresponding_recipient_well$ASVnum)
+  asvs_in_mixture <- unique(corresponding_mixture_well$ASVnum)
+  
+  # Colonization Status Update
+  subset_donor_data <- subset_donor_data %>%
+    mutate(colonization_status = case_when(
+      #asvs_in_donor %in% asvs_in_recipient ~ "Colonizer_Donor",
+      asvs_in_mixture %in% asvs_in_donor & !(asvs_in_mixture %in% asvs_in_recipient) ~ "Colonizer_Donor",
+      asvs_in_mixture %in% asvs_in_recipient & !(asvs_in_mixture %in% asvs_in_donor) ~ "Native_Recipient",
+      asvs_in_mixture %in% asvs_in_donor & asvs_in_mixture %in% asvs_in_recipient ~ "Hybrid_D+R",
+      
+      TRUE ~ "Failed_Colonizer"
+    ))
+  
+  # Append the result to the list
+  return(subset_donor_data)
+}

@@ -7,6 +7,8 @@ library(VennDiagram)
 library(patchwork)
 library(gridExtra)
 library(foreach)
+library(DT)
+
 
 
 # Set up file paths
@@ -52,6 +54,7 @@ names(KCHpalettee0041vector) <- KCHpalettee0041$taxashort
 
 # Save metadata table to out-cleaned folder
 write.table(datae0041meta, paste0(outPath, "/datae0041meta.txt"), row.names = FALSE, quote = FALSE)
+
 
 
 # Creating dataframe with each well of each plate having one row
@@ -200,23 +203,27 @@ alpha_diversity_summary <- datae0041meta_mixID %>%
 
 # Create the scatter plot
 alpha_diversity_scatterPlot <- alpha_diversity_summary %>%
+  mutate(displayRecipientCommunity=case_when(
+    recipient_community=="no_recipient" ~ "No recipient",
+    recipient_community=="XEA-post-V1" ~ "XEA post-antibiotic V1",
+    recipient_community=="XEA-post-V2" ~ "XEA post-antibiotic V2",
+    recipient_community=="XEA-pre" ~ "XEA pre-antibiotic",
+  )) %>%
   ggplot() +
   geom_boxplot(aes(x = community_mixture, y = alpha_diversity)) +
   geom_point(aes(x = community_mixture, y = alpha_diversity, 
-                 color = recipient_community),
+                 color = displayRecipientCommunity),
              position = position_jitter(width = 0.2)) +
   xlab("Community Mixture") +
   ylab("Number of Species") +
-  scale_color_brewer(palette="Dark2") +
+  scale_color_brewer(palette="Dark2", name="Recipient community") +
   ggtitle("Alpha Diversity by Community") +
   DEFAULTS.THEME_PRES +
-  scale_x_discrete(labels = desired_labels) +
-  scale_fill_discrete(labels = c("no_recipient" = "No Recipient"))
+  scale_x_discrete(labels = desired_labels)
 alpha_diversity_scatterPlot
 
 # Save plot
-save_plot(paste0(outPath, "/alpha_diversity_summary.png"), alpha_diversity_scatterPlot, base_width = 10, base_height = 10)
-
+save_plot(paste0(outPath, "/alpha_diversity_summary.png"), alpha_diversity_scatterPlot, base_width = 6, base_height = 4)
 
 
 # POSTER
@@ -227,12 +234,12 @@ save_plot(paste0(outPath, "/alpha_diversity_summary.png"), alpha_diversity_scatt
 # Theme change
 # Pre-Abx D+R=Mixture
 unique_preAbx_donor_asv_count <- datae0041meta_mixID %>%
-  filter(well=="A1") %>%
+  filter(well=="A2") %>%
   distinct(ASVnum) %>%
   nrow()
 # Donor stacked bar plot
 donor_abundance_sum_preAbx <- datae0041meta_mixID %>% 
-  filter(well=="A1") %>% 
+  filter(well=="A2") %>% 
   ggplot() +
   geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
            color = "black", stat = "identity") +
@@ -278,12 +285,12 @@ save_plot(paste0(outPath, "/recipient_abundance_sum_preAbx.png"), recipient_abun
 # Full opacity plot
 # Calculate the number of unique asv values
 unique_preAbx_mixture_asv_count <- datae0041meta_mixID %>%
-  filter(well=="B1") %>%
+  filter(well=="B2") %>%
   distinct(ASVnum) %>%
   nrow()
 # Stacked Bar Plot
 full_opacity_mix_preAbx_sum <- datae0041meta_mixID %>% 
-  filter(well=="B1") %>% 
+  filter(well=="B2") %>% 
   ggplot() +
   geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
            color = "black", stat = "identity") +
@@ -300,7 +307,7 @@ full_opacity_mix_preAbx_sum
 
 # Modulated opacity plot
 modulated_opacity_preAbx_sum <- dataASVorigin %>% 
-  filter(well=="B1") %>% 
+  filter(well=="B2") %>% 
   ggplot() +
   geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family),
                alpha = ifelse(colonization_status == "Colonizer_Donor", 1, 0)),
@@ -322,7 +329,7 @@ modulated_opacity_preAbx_sum
 arranged_colonizer_abundance_stacked_preAbx <- grid.arrange(donor_abundance_sum_preAbx, recipient_abundance_sum_preAbx, full_opacity_mix_preAbx_sum, modulated_opacity_preAbx_sum, ncol = 4)
 
 # Save plot
-save_plot(paste0(outPath, "/arranged_colonizer_abundance_stacked_preAbx.png"), arranged_colonizer_abundance_stacked_preAbx, base_width = 20, base_height = 10)
+save_plot(paste0(outPath, "/arranged_colonizer_abundance_stacked_preAbx.png"), arranged_colonizer_abundance_stacked_preAbx, base_width = 5, base_height = 5)
 
 
 
@@ -429,7 +436,7 @@ modulated_opacity_postAbxV1_sum
 arranged_colonizer_abundance_stacked_postAbxV1 <- grid.arrange(donor_abundance_sum_postAbxV1, recipient_abundance_sum_postAbxV1, full_opacity_mix_postAbxV1_sum, modulated_opacity_postAbxV1_sum, ncol = 4)
 
 # Save plot
-save_plot(paste0(outPath, "/arranged_colonizer_abundance_stacked_postAbxV1.png"), arranged_colonizer_abundance_stacked_postAbxV1, base_width = 20, base_height = 10)
+save_plot(paste0(outPath, "/arranged_colonizer_abundance_stacked_postAbxV1.png"), arranged_colonizer_abundance_stacked_postAbxV1, base_width = 5, base_height = 5)
 
 
 #POSTER
@@ -443,12 +450,12 @@ save_plot(paste0(outPath, "/arranged_colonizer_abundance_stacked_postAbxV1.png")
 
 #Donor unique ASV
 unique_postAbxV2_donor_asv_count <- datae0041meta_mixID %>%
-  filter(well=="A5") %>%
+  filter(well=="A2") %>%
   distinct(ASVnum) %>%
   nrow()
 # Donor stacked bar plot
 donor_abundance_sum_postAbxV2 <- datae0041meta_mixID %>% 
-  filter(well=="A5") %>% 
+  filter(well=="A2") %>% 
   ggplot() +
   geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
            color = "black", stat = "identity") +
@@ -489,12 +496,12 @@ recipient_abundance_sum_postAbxV2
 # Full opacity plot
 # Calculate the number of unique asv values
 unique_postAbxV2_mixture_asv_count <- datae0041meta_mixID %>%
-  filter(well=="F5") %>%
+  filter(well=="F2") %>%
   distinct(ASVnum) %>%
   nrow()
 # Stacked Bar Plot
 full_opacity_mix_postAbxV2_sum <- datae0041meta_mixID %>% 
-  filter(well=="F5") %>% 
+  filter(well=="F2") %>% 
   ggplot() +
   geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family)),
            color = "black", stat = "identity") +
@@ -511,7 +518,7 @@ full_opacity_mix_postAbxV2_sum
 
 # Modulated opacity plot
 modulated_opacity_postAbxV2_sum <- dataASVorigin %>% 
-  filter(well=="F5") %>% 
+  filter(well=="F2") %>% 
   ggplot() +
   geom_bar(aes(x = community_mixture, y = relAbundance, fill = factor(Family),
                alpha = ifelse(colonization_status == "Colonizer_Donor", 1, 0)),
@@ -533,7 +540,7 @@ modulated_opacity_postAbxV2_sum
 arranged_colonizer_abundance_postAbxV2 <- grid.arrange(donor_abundance_sum_postAbxV2, recipient_abundance_sum_postAbxV2, full_opacity_mix_postAbxV2_sum, modulated_opacity_postAbxV2_sum, ncol = 4)
 
 # Save plot
-save_plot(paste0(outPath, "/arranged_colonizer_abundance_postAbxV2.png"), arranged_colonizer_abundance_postAbxV2, base_width = 20, base_height = 10)
+save_plot(paste0(outPath, "/arranged_colonizer_abundance_postAbxV2.png"), arranged_colonizer_abundance_postAbxV2, base_width = 5, base_height = 5)
 
 
 
@@ -616,3 +623,113 @@ postV2_colonizer_family_scatterplot <- dataASVorigin %>%
 postV2_colonizer_family_scatterplot
 # Save plot
 save_plot(paste0(outPath, "/postV2_colonizer_family_scatterplot.png"), postV2_colonizer_family_scatterplot, base_width = 5, base_height = 5)
+
+# Scatter plot of bacterial families that have colonized
+combined_colonizer_family_plot <- dataASVorigin %>%
+  filter(colonization_status == "Colonizer_Donor") %>%
+  group_by(Family, recipient) %>%
+  summarize(colonizer_count = n()) %>%
+  ggplot(aes(x = reorder(Family, colonizer_count), y = colonizer_count, fill = recipient)) +
+  geom_point(stat = "identity", shape = 21, size = 4, position = position_jitter(width = 0.3)) +
+  xlab("Bacterial Family") +
+  ylab("Number of Colonizers") +
+  scale_color_brewer(palette="Dark2") +
+  DEFAULTS.THEME_PRES +
+  ggtitle("Colonizers by Bacterial Family") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  guides(fill = guide_legend(title = "Recipient Community"))
+combined_colonizer_family_plot
+
+# Save plot
+save_plot(paste0(outPath, "/combined_colonizer_family_plot.png"), combined_colonizer_family_plot, base_width = 7, base_height = 5)
+
+# Normalized scatter plot of colonizing families
+# Calculate the normalized number of ASVs within each family for each community
+normalized_colonizer_family_data <- dataASVorigin %>%
+  filter(colonization_status == "Colonizer_Donor") %>%
+  group_by(Family, recipient) %>%
+  summarize(colonizer_count = n()) %>%
+  group_by(Family) %>%
+  mutate(normalized_count = colonizer_count / sum(colonizer_count)) %>%
+  ungroup()
+
+# Use complete() to add missing combinations of Family and recipient - KAT
+normalized_colonizer_family_data <- normalized_colonizer_family_data %>%
+  complete(Family, recipient, fill = list(colonizer_count = 0, normalized_count = 0))
+
+# Create a bar plot to visualize the normalized counts
+normalized_colonizer_family_plot <- normalized_colonizer_family_data %>%
+  ggplot() +
+  geom_point(aes(x = reorder(Family, normalized_count), y = normalized_count, fill = recipient), 
+             stat = "identity", shape = 21, size = 3, position = position_jitter(width = 0.2)) +
+  xlab("Bacterial Family") +
+  ylab("Normalized Number of Colonizers") +
+  scale_color_brewer(palette = "Dark2") +
+  DEFAULTS.THEME_PRES +
+  ggtitle("Normalized Colonizers by Bacterial Family") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  guides(fill = guide_legend(title = "Recipient Community"))
+normalized_colonizer_family_plot
+
+# Save plot
+save_plot(paste0(outPath, "/normalized_colonizer_family_plot.png"), normalized_colonizer_family_plot, base_width = 9, base_height = 5)
+
+
+# Table of the ASVs per families in pre, post v1 and post v2
+# Filter data for the specified recipient communities
+recipient_communities <- c("XEA-pre", "XEA-post-V1", "XEA-post-V2")
+
+# Create a table with families and their counts for each recipient community
+family_table <- datae0041meta_mixID %>%
+  filter(recipient %in% recipient_communities) %>%
+  group_by(recipient, Family) %>%
+  summarize(family_count = n_distinct(ASVnum)) %>%
+  spread(Family, family_count, fill = 0)
+
+# Convert the table to a format suitable for interactive display
+# factor and levels sets the custom order of the factor levels based on the order of recipient_communities
+family_table_for_display <- family_table %>%
+  mutate(recipient_community = factor(recipient, levels = recipient_communities))
+
+# Create an interactive dataTable
+datatable(family_table_for_display,
+          options = list(pageLength = 10,
+                         lengthMenu = c(10, 20, 50),
+                         dom = 't',
+                         scrollX = TRUE),
+          rownames = FALSE)
+
+# Saving datatable to an HTML file
+Family_ASV_per_recipient_datatable <- datatable(family_table_for_display)
+saveWidget(Family_ASV_per_recipient_datatable, paste0(outPath, "/family_ASV_table.html"))
+
+
+# Create a table with families for each recipient community
+just_family_table <- datae0041meta_mixID %>%
+  filter(recipient %in% recipient_communities & community_mixture == "recipient_only" & replicate == "1") %>%
+  group_by(recipient, Family) %>%
+  summarize(present = any(!is.na(ASVnum))) %>%
+  spread(Family, present, fill = FALSE)
+
+# Convert the table to a format suitable for interactive display
+just_family_table_for_display <- just_family_table %>%
+  mutate(recipient_community = factor(recipient,
+                                      levels = c("XEA-pre", "XEA-post-V1", "XEA-post-V2"),
+                                      labels = c("pre-abx", "post-abx V1", "post-abx V2"))) %>%
+  arrange(recipient_community)  # Reorder rows based on recipient_community levels
+
+# Select only the columns I want to display (excluding "recipient_community")
+columns_to_display <- setdiff(names(just_family_table_for_display), "recipient_community")
+
+# Create an interactive dataTable with background color formatting
+Family_presence_per_recipient_datatable <- datatable(just_family_table_for_display[, columns_to_display],
+                                                     options = list(pageLength = 10,
+                                                                    lengthMenu = c(10, 20, 50),
+                                                                    dom = 't',
+                                                                    scrollX = TRUE),
+                                                     rownames = FALSE) %>%
+  formatStyle(columns_to_display, valueColumns = columns_to_display,
+              backgroundColor = styleEqual(c(FALSE, TRUE), c("red", "lightgreen")))
+
+# Saving datatable to an HTML file
+saveWidget(Family_presence_per_recipient_datatable, paste0(outPath, "/family_presence_table.html"))
