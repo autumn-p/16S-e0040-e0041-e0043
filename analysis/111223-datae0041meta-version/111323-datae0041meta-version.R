@@ -105,12 +105,72 @@ result_data <- tibble()
 
 # Different column version - few less didn't colonize and a few more uncertain colonizers
 # Annotate every donor ASV with its ability to colonize the recipient in the mixture community
-dataColonizationSuccess <- foreach(i=unique(datae0041meta %>% filter(donor != "blank" & recipient == "blank") %>% pull(well)), .combine="rbind") %do% {
+# dataColonizationSuccess <- foreach(i=unique(datae0041meta %>% filter(donor != "blank" & recipient == "blank") %>% pull(well)), .combine="rbind") %do% {
+#   print(i)
+#   # Subset the data for the current donor community
+#   subset_data <- datae0041meta %>% filter(well == i)
+#   i_donor = unique(subset_data$donor)
+#   i_replicate = unique(subset_data$replicate)
+#   
+#   # Finding corresponding wells based on the donor well
+#   corresponding_preabx_well <- datae0041meta %>%
+#     filter(donor == i_donor & recipient == "XEA-pre" & replicate == i_replicate)
+#   corresponding_postabxV1_well <- datae0041meta %>%
+#     filter(donor == i_donor & recipient == "XEA-post-V1" & replicate == i_replicate)
+#   corresponding_preabx_only_well <- datae0041meta %>%
+#     filter(donor == "blank" & recipient == "XEA-pre" & replicate == i_replicate)
+#   corresponding_postabxV1_only_well <- datae0041meta %>%
+#     filter(donor == "blank" & recipient == "XEA-post-V1" & replicate == i_replicate)
+#   
+#   # Identify ASVnums for each well
+#   asvs_in_donor <- unique(subset_data$OTU)
+#   asvs_in_preabx_mix <- unique(corresponding_preabx_well$OTU)
+#   asvs_in_postabxV1_mix <- unique(corresponding_postabxV1_well$OTU)
+#   asvs_in_preabx_only <- unique(corresponding_preabx_only_well$OTU)
+#   asvs_in_postabxV1_only <- unique(corresponding_postabxV1_only_well$OTU)
+#   
+#   # two columns - does it colonize pre successfully and second does it colonize post successfully
+#   # third annotation - uncertain (in both d and r)
+#   # fourth column - no colonization
+#   # ah snap, what about d & r but not in mix???
+#   
+#   # Colonization preAbx column should have true, false, NA value
+#   # Check colonization status
+#   colonization_status <- tibble(
+#     well = rep(i, length(asvs_in_donor)),
+#     OTU = asvs_in_donor,
+#     Colonization_Preabx = asvs_in_donor %in% asvs_in_preabx_mix & !(asvs_in_donor %in% corresponding_preabx_only_well$OTU),
+#     Colonization_PostabxV1 = asvs_in_donor %in% asvs_in_postabxV1_mix & !(asvs_in_donor %in% corresponding_postabxV1_only_well$OTU),
+#     Uncertain_Colonization = (asvs_in_donor %in% asvs_in_preabx_only) | (asvs_in_donor %in% asvs_in_postabxV1_only),
+#     Not_Colonizing = !(asvs_in_donor %in% asvs_in_preabx_mix) | !(asvs_in_donor %in% asvs_in_postabxV1_mix)
+#   )
+#   
+#   print(colonization_status)
+#   
+#   # Append the result to the overall data frame
+#   result_data <- bind_rows(result_data, colonization_status)
+# }
+# 
+# # Merge the result_data with the original datae0041meta dataframe based on well and OTU columns
+# datae0041meta <- left_join(datae0041meta, result_data, by = c("well", "OTU"))
+# 
+# # Create the donor_colonizer_type column
+# datae0041meta <- datae0041meta %>%
+#   mutate(donor_colonizer_type = case_when(
+#     Colonization_Preabx & Colonization_PostabxV1  ~ "Universal_Colonizer",
+#     (Colonization_Preabx & !Colonization_PostabxV1) | (!Colonization_Preabx & Colonization_PostabxV1) ~ "Conditional_Colonizer",
+#     Uncertain_Colonization ~ "Uncertain_Colonizer",
+#     Not_Colonizing ~ "Did_Not_Colonize",
+#     TRUE ~ NA_character_
+#   ))
+
+# Annotate every donor ASV with its ability to colonize the recipient in the mixture community
+dataColonizationSuccess <- foreach(i = unique(datae0041meta %>% filter(donor != "blank" & recipient == "blank") %>% pull(well)), .combine = "rbind") %do% {
   print(i)
   # Subset the data for the current donor community
   subset_data <- datae0041meta %>% filter(well == i)
-  i_donor = unique(subset_data$donor)
-  i_replicate = unique(subset_data$replicate)
+  i_donor <- unique(subset_data$donor)
+  i_replicate <- unique(subset_data$replicate)
   
   # Finding corresponding wells based on the donor well
   corresponding_preabx_well <- datae0041meta %>%
@@ -122,40 +182,23 @@ dataColonizationSuccess <- foreach(i=unique(datae0041meta %>% filter(donor != "b
   corresponding_postabxV1_only_well <- datae0041meta %>%
     filter(donor == "blank" & recipient == "XEA-post-V1" & replicate == i_replicate)
   
-  # Identify ASVnums for each well
-  asvs_in_donor <- unique(subset_data$OTU)
-  asvs_in_preabx_mix <- unique(corresponding_preabx_well$OTU)
-  asvs_in_postabxV1_mix <- unique(corresponding_postabxV1_well$OTU)
-  asvs_in_preabx_only <- unique(corresponding_preabx_only_well$OTU)
-  asvs_in_postabxV1_only <- unique(corresponding_postabxV1_only_well$OTU)
+  # Incorporate logic directly into subset_data using mutate
+  subset_data <- subset_data %>% 
+    mutate(
+      Colonization_Preabx = OTU %in% unique(corresponding_preabx_well$OTU) & !(OTU %in% unique(corresponding_preabx_only_well$OTU)),
+      Colonization_PostabxV1 = OTU %in% unique(corresponding_postabxV1_well$OTU) & !(OTU %in% unique(corresponding_postabxV1_only_well$OTU)),
+      Uncertain_Colonization = (OTU %in% unique(corresponding_preabx_only_well$OTU)) | (OTU %in% unique(corresponding_postabxV1_only_well$OTU)),
+      Not_Colonizing = !(OTU %in% unique(corresponding_preabx_well$OTU)) | !(OTU %in% unique(corresponding_postabxV1_well$OTU))
+    )
   
-  # two columns - does it colonize pre successfully and second does it colonize post successfully
-  # third annotation - uncertain (in both d and r)
-  # fourth column - no colonization
-  # ah snap, what about d & r but not in mix???
-  
-  # Colonization preAbx column should have true, false, NA value
-  # Check colonization status
-  colonization_status <- tibble(
-    well = rep(i, length(asvs_in_donor)),
-    OTU = asvs_in_donor,
-    Colonization_Preabx = asvs_in_donor %in% asvs_in_preabx_mix & !(asvs_in_donor %in% corresponding_preabx_only_well$OTU),
-    Colonization_PostabxV1 = asvs_in_donor %in% asvs_in_postabxV1_mix & !(asvs_in_donor %in% corresponding_postabxV1_only_well$OTU),
-    Uncertain_Colonization = (asvs_in_donor %in% asvs_in_preabx_only) | (asvs_in_donor %in% asvs_in_postabxV1_only),
-    Not_Colonizing = !(asvs_in_donor %in% asvs_in_preabx_mix) | !(asvs_in_donor %in% asvs_in_postabxV1_mix)
-  )
-  
-  print(colonization_status)
+  print(subset_data)
   
   # Append the result to the overall data frame
-  result_data <- bind_rows(result_data, colonization_status)
+  result_data <- bind_rows(result_data, subset_data)
 }
 
-# Merge the result_data with the original datae0041meta dataframe based on well and OTU columns
-datae0041meta <- left_join(datae0041meta, result_data, by = c("well", "OTU"))
-
 # Create the donor_colonizer_type column
-datae0041meta <- datae0041meta %>%
+result_data <- result_data %>%
   mutate(donor_colonizer_type = case_when(
     Colonization_Preabx & Colonization_PostabxV1  ~ "Universal_Colonizer",
     (Colonization_Preabx & !Colonization_PostabxV1) | (!Colonization_Preabx & Colonization_PostabxV1) ~ "Conditional_Colonizer",
@@ -164,6 +207,7 @@ datae0041meta <- datae0041meta %>%
     TRUE ~ NA_character_
   ))
 
+
 # PLAN FOR NEXT ANALYSES
 ## How many colonizers are in each category, across all of the donors (foreach)...build from there
 ### Across families? Plot the data in as many ways as possible to do sanity checks
@@ -171,7 +215,7 @@ datae0041meta <- datae0041meta %>%
 #### Ex. Number of colonizers that colonizer pre vs post and check with intuition.
 
 # Count the number of colonizers in each category across all donors
-colonizer_counts <- datae0041meta %>%
+colonizer_counts <- result_data %>%
   group_by(donor_colonizer_type) %>%
   summarize(count = n())
 # Print results
@@ -200,13 +244,15 @@ pie_chart
 save_plot(paste0(outPath, "/pie_chart.png"), pie_chart, base_width = 10, base_height = 10)
 
 # Bar plot across families
-Colonization_across_families_plot <- datae0041meta %>% ggplot() +
+Colonization_across_families_plot <- result_data %>% ggplot() +
   geom_bar(aes(x = donor_colonizer_type, fill = Family)) +
-  facet_wrap(~donor_colonizer_type) +
+  #facet_wrap(~donor_colonizer_type) +
   labs(title = "Colonization Status Across Families",
        x = "Donor Colonizer Type",
        y = "Count") +
-  theme_minimal()
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 Colonization_across_families_plot
 # Save plot
 save_plot(paste0(outPath, "/Colonization_across_families_plot.png"), Colonization_across_families_plot, base_width = 20, base_height = 10)
