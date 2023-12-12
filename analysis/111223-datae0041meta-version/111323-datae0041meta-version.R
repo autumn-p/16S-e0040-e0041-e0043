@@ -207,6 +207,8 @@ result_data <- result_data %>%
     TRUE ~ NA_character_
   ))
 
+# Save result_data table to out-cleaned folder
+write.table(result_data, paste0(outPath, "/result_data.txt"), row.names = FALSE, quote = FALSE)
 
 # PLAN FOR NEXT ANALYSES
 ## How many colonizers are in each category, across all of the donors (foreach)...build from there
@@ -234,7 +236,7 @@ save_plot(paste0(outPath, "/colonizer_type_bars.png"), colonizer_type_bars, base
 # Too many NAs?
 
 # OoOoO same thing in a pie chart (showing the proportion of colonizers in each category)
-pie_chart <- datae0041meta %>% ggplot() +
+pie_chart <- result_data %>% ggplot() +
   geom_bar(aes(x = 1, fill = donor_colonizer_type), width = 1) +
   coord_polar(theta = "y") +
   labs(title = "Proportion of Colonizers in Each Category") +
@@ -256,6 +258,54 @@ Colonization_across_families_plot <- result_data %>% ggplot() +
 Colonization_across_families_plot
 # Save plot
 save_plot(paste0(outPath, "/Colonization_across_families_plot.png"), Colonization_across_families_plot, base_width = 20, base_height = 10)
+
+# Bar plot across faceted families
+Colonization_across_families_faceted_plot <- result_data %>% ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = Family)) +
+  facet_wrap(~Family) +
+  labs(title = "Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_across_families_faceted_plot
+# Save plot
+save_plot(paste0(outPath, "/Colonization_across_families_faceted_plot.png"), Colonization_across_families_faceted_plot, base_width = 20, base_height = 10)
+
+colonizer_families <- result_data %>% ggplot() +
+  geom_bar(aes(x = Family, fill = Family)) +
+  facet_wrap(~donor_colonizer_type, ncol=1) +
+  labs(title = "Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+colonizer_families
+# Save plot
+save_plot(paste0(outPath, "/colonizer_families.png"), colonizer_families, base_width = 20, base_height = 10)
+
+# Conditional colonizers plotted with distribution of pre vs post
+result_data_counts <- result_data %>%
+  group_by(donor_colonizer_type, Family) %>%
+  summarise(Preabx_count = sum(Colonization_Preabx),
+            Postabx_count = sum(Colonization_PostabxV1)) %>%
+  ungroup()
+Colonization_conditional_pre_post_plot <- result_data_counts %>% filter(donor_colonizer_type == "Conditional_Colonizer") %>% ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, y = Preabx_count, fill = "Preabx"), stat = "identity", position = "dodge") +
+  geom_bar(aes(x = donor_colonizer_type, y = Postabx_count, fill = "Postabx"), stat = "identity", position = "dodge") +
+  facet_wrap(~Family) +
+  labs(title = "Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  scale_fill_manual(values = c("Preabx" = "blue", "Postabx" = "red")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_conditional_pre_post_plot
+# Save plot
+save_plot(paste0(outPath, "/Colonization_conditional_pre_post_plot.png"), Colonization_conditional_pre_post_plot, base_width = 20, base_height = 10)
+
 
 # Line plot to show how similar overall the replicate 1s are to the replicate 2s in each colonizer type category
 line_plot_time <- datae0041meta %>% ggplot() +
@@ -323,5 +373,236 @@ well_vs_replicate_plot
 # Save plot
 save_plot(paste0(outPath, "/replicate_comparison_plot.png"), replicate_comparison_plot, base_width = 15, base_height = 10)
 
+# Progress since last meeting with Kat
+# Normalizes the counts within each family based on the total number of rows for each 
+# combination of Family and donor_colonizer_type and makes all total to 1
+result_data_normalized <- result_data %>%
+  group_by(Family, donor_colonizer_type) %>%
+  mutate(Normalized_Count = 1 / n()) %>%
+  ungroup()
 
+# Bar plot across faceted families with normalized counts
+Colonization_combo_across_families_faceted_normalized_plot <- result_data_normalized %>% ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = Family, y = Normalized_Count), stat = "identity", position = "dodge") +
+  facet_wrap(~Family) +
+  labs(title = "Normalized Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Normalized Count") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_combo_across_families_faceted_normalized_plot
+# Save plot
+save_plot(paste0(outPath, "/Colonization_combo_across_families_faceted_normalized_plot.png"), Colonization_combo_across_families_faceted_normalized_plot, base_width = 15, base_height = 10)
+
+# ORRR
+# Nevermind this is wronggg
+# Normalize counts within each family
+result_data_normalized <- result_data %>%
+  group_by(Family) %>%
+  mutate(Normalized_Count = sum(!is.na(donor_colonizer_type))) %>%
+  ungroup()
+
+# Bar plot across faceted families with normalized counts
+Colonization_across_families_faceted_normalized_plot <- result_data_normalized %>% ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = Family, y = Normalized_Count), stat = "identity", position = "dodge") +
+  facet_wrap(~Family) +
+  labs(title = "Normalized Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Normalized Count") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_across_families_faceted_normalized_plot
+# Save plot
+save_plot(paste0(outPath, "/Colonization_across_families_faceted_normalized_plot.png"), Colonization_across_families_faceted_normalized_plot, base_width = 15, base_height = 10)
+
+# Distribution of donor_colonizer_type per donor and corresponding wells
+cleaned_donor_colonizer_distribution_plot <- result_data %>%
+  ggplot(aes(x = donor_colonizer_type, fill = donor_colonizer_type)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ donor + well, scales = "free") +
+  labs(title = "Distribution of Donor Colonizer Type per Donor and Corresponding Wells",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+cleaned_donor_colonizer_distribution_plot
+# Save plot
+save_plot(paste0(outPath, "/cleaned_donor_colonizer_distribution_plot.png"), cleaned_donor_colonizer_distribution_plot, base_width = 15, base_height = 20)
+
+library(ggplot2)
+
+# Distribution of donor_colonizer_type per donor and corresponding wells
+replicate_distribution_plot <- result_data %>%
+  ggplot(aes(x = donor_colonizer_type, fill = donor_colonizer_type)) +
+  geom_bar(position = "dodge") +
+  facet_grid(replicate ~ donor + well, scales = "free") +
+  labs(title = "Distribution of Donor Colonizer Type per Replicate and Corresponding Wells",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  
+replicate_distribution_plot
+# Save plot
+save_plot(paste0(outPath, "/replicate_distribution_plot.png"), replicate_distribution_plot, base_width = 15, base_height = 10)
+
+# Distribution of donor_colonizer_type per donor and corresponding wells
+replicate_adjusted_plot <- result_data %>%
+  ggplot(aes(x = donor_colonizer_type, fill = donor_colonizer_type)) +
+  geom_bar(position = "dodge") +
+  facet_grid(donor ~ replicate + well, scales = "free") +
+  labs(title = "Distribution of Donor Colonizer Type per Donor, Replicate, and Corresponding Wells",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  
+replicate_adjusted_plot
+# Save plot
+save_plot(paste0(outPath, "/replicate_adjusted_plot.png"), replicate_adjusted_plot, base_width = 15, base_height = 10)
+
+# Subset data for Sutterellaceae
+sutterellaceae_data <- result_data %>% filter(Family == "Sutterellaceae")
+
+# Bar plot of colonization types within Sutterellaceae
+colonization_sutte_plot <- sutterellaceae_data %>% ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = donor_colonizer_type), position = "dodge") +
+  labs(title = "Colonization Status Within Sutterellaceae",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+colonization_sutte_plot
+
+# Subset data for Sutterellaceae in pre-antibiotic and post-antibioticV1
+sutterellaceae_pre <- result_data %>% filter(Family == "Sutterellaceae" & Colonization_Preabx == TRUE)
+sutterellaceae_postV1 <- result_data %>% filter(Family == "Sutterellaceae" & Colonization_PostabxV1 == TRUE)
+
+# Bar plot for colonization types in Sutterellaceae pre and post-antibioticV1
+sutte_colonization_pre_post_plot <- bind_rows(mutate(sutterellaceae_pre, AntibioticStatus = "Pre"),
+                                        mutate(sutterellaceae_postV1, AntibioticStatus = "PostV1")) %>%
+  ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = AntibioticStatus), position = "dodge") +
+  labs(title = "Colonization Status in Sutterellaceae - Pre vs. Post-AntibioticV1",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+sutte_colonization_pre_post_plot
+# Save plot
+save_plot(paste0(outPath, "/sutte_colonization_pre_post_plot.png"), sutte_colonization_pre_post_plot, base_width = 15, base_height = 10)
+
+# Subset data for Rikenellaceae in pre-antibiotic and post-antibioticV1
+rikenellaceae_pre <- result_data %>%
+  filter(Family == "Rikenellaceae" & Colonization_Preabx == TRUE)
+
+rikenellaceae_postV1 <- result_data %>%
+  filter(Family == "Rikenellaceae" & Colonization_PostabxV1 == TRUE)
+
+# Bar plot for colonization types in Rikenellaceae pre and post-antibioticV1
+rikenellaceae_pre_post_plot <- bind_rows(mutate(rikenellaceae_pre, AntibioticStatus = "Pre"),
+                                         mutate(rikenellaceae_postV1, AntibioticStatus = "PostV1")) %>%
+  ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = AntibioticStatus), position = "dodge") +
+  labs(title = "Colonization Status in Rikenellaceae - Pre vs. Post-AntibioticV1",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+rikenellaceae_pre_post_plot
+# Save plot
+save_plot(paste0(outPath, "/rikenellaceae_pre_post_plot.png"), rikenellaceae_pre_post_plot, base_width = 15, base_height = 10)
+
+# Subset data for Erysipelotrichaceae in pre-antibiotic and post-antibioticV1
+erysipelotrichaceae_pre <- result_data %>%
+  filter(Family == "Erysipelotrichaceae" & Colonization_Preabx == TRUE)
+
+erysipelotrichaceae_postV1 <- result_data %>%
+  filter(Family == "Erysipelotrichaceae" & Colonization_PostabxV1 == TRUE)
+
+# Bar plot for colonization types in Erysipelotrichaceae pre and post-antibioticV1
+erysipelotrichaceae_pre_post_plot <- bind_rows(mutate(erysipelotrichaceae_pre, AntibioticStatus = "Pre"),
+                                               mutate(erysipelotrichaceae_postV1, AntibioticStatus = "PostV1")) %>%
+  ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = AntibioticStatus), position = "dodge") +
+  labs(title = "Colonization Status in Erysipelotrichaceae - Pre vs. Post-AntibioticV1",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+erysipelotrichaceae_pre_post_plot
+# Save plot
+save_plot(paste0(outPath, "/erysipelotrichaceae_pre_post_plot.png"), erysipelotrichaceae_pre_post_plot, base_width = 15, base_height = 10)
+
+# Initialize an empty data frame for postV2_result_data
+postV2_result_data <- data.frame()
+
+# Annotate every donor ASV with its ability to colonize the recipient in the mixture community
+postV2dataColonizationSuccess <- foreach(i = unique(datae0041meta %>% filter(donor != "blank" & recipient == "blank") %>% pull(well)), .combine = "rbind") %do% {
+  print(i) 
+  # Subset the data for the current donor community
+  postV2_subset_data <- datae0041meta %>% filter(well == i)
+  i_donor <- unique(postV2_subset_data$donor)
+  i_replicate <- unique(postV2_subset_data$replicate)
+  
+  # Finding corresponding wells based on the donor well
+  corresponding_preabx_well <- datae0041meta %>%
+    filter(donor == i_donor & recipient == "XEA-pre" & replicate == i_replicate)
+  corresponding_postabxV1_well <- datae0041meta %>%
+    filter(donor == i_donor & recipient == "XEA-post-V1" & replicate == i_replicate)
+  corresponding_postabxV2_well <- datae0041meta %>%
+    filter(donor == i_donor & recipient == "XEA-post-V2" & replicate == i_replicate)
+  corresponding_preabx_only_well <- datae0041meta %>%
+    filter(donor == "blank" & recipient == "XEA-pre" & replicate == i_replicate)
+  corresponding_postabxV1_only_well <- datae0041meta %>%
+    filter(donor == "blank" & recipient == "XEA-post-V1" & replicate == i_replicate)
+  corresponding_postabxV2_only_well <- datae0041meta %>%
+    filter(donor == "blank" & recipient == "XEA-post-V2" & replicate == i_replicate)
+  
+  # Incorporate logic directly into subset_data using mutate
+  postV2_subset_data <- postV2_subset_data %>% 
+    mutate(
+      Colonization_Preabx = OTU %in% unique(corresponding_preabx_well$OTU) & !(OTU %in% unique(corresponding_preabx_only_well$OTU)),
+      Colonization_PostabxV1 = OTU %in% unique(corresponding_postabxV1_well$OTU) & !(OTU %in% unique(corresponding_postabxV1_only_well$OTU)),
+      Colonization_PostabxV2 = OTU %in% unique(corresponding_postabxV2_well$OTU) & !(OTU %in% unique(corresponding_postabxV2_only_well$OTU)),
+      Uncertain_Colonization = (OTU %in% unique(corresponding_preabx_only_well$OTU)) | (OTU %in% unique(corresponding_postabxV1_only_well$OTU)) | (OTU %in% unique(corresponding_postabxV2_only_well$OTU)),
+      Not_Colonizing = !(OTU %in% unique(corresponding_preabx_well$OTU)) | !(OTU %in% unique(corresponding_postabxV1_well$OTU)) | !(OTU %in% unique(corresponding_postabxV2_well$OTU))
+    )
+  
+  print(postV2_subset_data)
+  
+  # Append the result to the overall data frame
+  postV2_result_data <- bind_rows(postV2_result_data, postV2_subset_data)
+}
+
+# Create the donor_colonizer_type column
+postV2_result_data <- postV2_result_data %>%
+  mutate(donor_colonizer_type = case_when(
+    Colonization_Preabx & Colonization_PostabxV1  & Colonization_PostabxV2 ~ "Universal_Colonizer",
+    (Colonization_Preabx & !Colonization_PostabxV1 & !Colonization_PostabxV2) | (!Colonization_Preabx & Colonization_PostabxV1 & !Colonization_PostabxV2) | (!Colonization_Preabx & !Colonization_PostabxV1 & Colonization_PostabxV2)~ "Conditional_Colonizer",
+    Uncertain_Colonization ~ "Uncertain_Colonizer",
+    Not_Colonizing ~ "Did_Not_Colonize",
+    TRUE ~ NA_character_
+  ))
+
+# Subset data for each family in postV1 and postV2
+family_postV1 <- postV2_result_data %>% filter(Colonization_PostabxV1 == TRUE)
+family_postV2 <- postV2_result_data %>% filter(Colonization_PostabxV2 == TRUE)
+
+# Combine data for plotting
+family_comparison <- bind_rows(mutate(family_postV1, AntibioticStatus = "PostV1"),
+                               mutate(family_postV2, AntibioticStatus = "PostV2"))
+
+# Create the bar plot
+family_colonization_comparison_plot <- family_comparison %>%
+  ggplot(aes(x = Family, fill = AntibioticStatus)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Colonization Status Comparison between PostV1 and PostV2 by Family",
+       x = "Family",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+family_colonization_comparison_plot
+# Save plot
+save_plot(paste0(outPath, "/family_colonization_comparison_plot.png"), family_colonization_comparison_plot, base_width = 15, base_height = 10)
 
