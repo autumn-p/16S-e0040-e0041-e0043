@@ -606,3 +606,92 @@ family_colonization_comparison_plot
 # Save plot
 save_plot(paste0(outPath, "/family_colonization_comparison_plot.png"), family_colonization_comparison_plot, base_width = 15, base_height = 10)
 
+# Kat's step 1
+statistics_data <- result_data %>%
+  filter(donor_colonizer_type=="Conditional_Colonizer") %>%
+  select(OTU, Family, donor_colonizer_type)
+
+# Kat's step 2 broken down
+
+count_observed <- function(result_data) {
+  # Step 1: Filter data for conditional colonizers
+  conditional_colonizers <- result_data %>%
+    filter(donor_colonizer_type == "Conditional_Colonizer" & plate=="e0041-A-5")
+  
+  # Step 2: Identify families that are different between pre-abx and post-abx V1
+  pre_abx_families <- conditional_colonizers %>%
+    filter(Colonization_Preabx == "TRUE") %>%
+    select(Family) %>%
+    distinct()
+  
+  post_abx_v1_families <- conditional_colonizers %>%
+    filter(Colonization_PostabxV1 == "TRUE") %>%
+    select(Family) %>%
+    distinct()
+  
+  # Either conditional colonizer family to pre-abx or post-abx-V1
+  unique_to_pre_abx <- setdiff(unique(pre_abx_families$Family), unique(post_abx_v1_families$Family))
+  unique_to_post_abx_v1 <- setdiff(unique(post_abx_v1_families$Family), unique(pre_abx_families$Family))
+  
+  # Combine the unique families from both pre-abx and post-abx V1
+  different_families <- union(unique_to_pre_abx, unique_to_post_abx_v1)
+  
+  # Step 3: Count the number of conditional colonizers in different families
+  observed_count <- conditional_colonizers %>%
+    filter(Family %in% different_families) %>%
+    select(OTU, Family, donor_colonizer_type)
+  
+  return(observed_count)
+}
+
+# Probably do this if I actually used the function
+#observed_count <- count_observed(result_data)
+#print(observed_count)
+
+# Kat's Step 3
+# Function to shuffle data
+shuffled_data <- result_data %>%
+  select(OTU, Family, donor_colonizer_type) %>%
+  slice(sample(n()))
+  
+# Kat's Step 4 count
+# Function to count differential colonizers in families of interest
+observed_count_permuted <- shuffled_data %>%
+  filter(Family %in% different_families) %>%
+  count(Family, name = "Count")
+
+
+# Kat's step 4 permute
+# Function to generate permuted values
+generate_permuted_values <- function(shuffled_data, different_families, num_permutations = 100) {
+  permuted_values <- replicate(num_permutations, {
+    count_differential_colonizers(shuffled_data, different_families)
+  })
+  
+  return(permuted_values)
+}
+
+
+
+
+# Number of permutations
+num_permutations <- 100
+
+# Initialize a list to store permuted values
+permuted_values <- vector("list", length = num_permutations)
+
+# Perform permutations
+for (i in 1:num_permutations) {
+  # Shuffle data
+  shuffled_data <- result_data %>%
+    select(OTU, Family, donor_colonizer_type) %>%
+    slice(sample(n()))
+  
+  # Count differential colonizers in families of interest
+  observed_count_permuted <- shuffled_data %>%
+    filter(Family %in% different_families) %>%
+    count(Family, name = "Count")
+  
+  # Store the result in the list
+  permuted_values[[i]] <- observed_count_permuted
+}
