@@ -149,6 +149,7 @@ result_data <- tibble()
 #annotate unsuccessful colonizations too
 dataColonizationSuccess <- foreach(i=unique(datae0041meta %>% filter(donor != "blank" & recipient == "blank") %>% pull(well)), .combine="rbind") %do% {
   print(i)
+  # Mutate on subset data frame******
   # Subset the data for the current donor community
   subset_data <- datae0041meta %>% filter(well == i)
   i_donor = unique(subset_data$donor)
@@ -173,6 +174,7 @@ dataColonizationSuccess <- foreach(i=unique(datae0041meta %>% filter(donor != "b
   # colonizes pre - abx T/F present in donor, not in recipient, present in mix preabx
   # can't tell case (in d and r but not mix)
   
+  # possibly change tibble to mutate so that there aren't problems when merging*****
   # Check colonization status
   colonization_status <- tibble(
     well = rep(i, length(asvs_in_donor)),

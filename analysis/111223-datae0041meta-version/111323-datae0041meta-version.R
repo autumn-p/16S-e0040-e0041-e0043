@@ -246,6 +246,7 @@ pie_chart
 save_plot(paste0(outPath, "/pie_chart.png"), pie_chart, base_width = 10, base_height = 10)
 
 # Bar plot across families
+#<<<<<<< Updated upstream
 Colonization_across_families_plot <- result_data %>% ggplot() +
   geom_bar(aes(x = donor_colonizer_type, fill = Family)) +
   #facet_wrap(~donor_colonizer_type) +
@@ -255,6 +256,15 @@ Colonization_across_families_plot <- result_data %>% ggplot() +
   scale_fill_manual(values = KCHpalettee0041vector) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))
+#=======
+Colonization_across_families_plot <- datae0041meta %>% filter(donor_colonizer_type == "Conditional_Colonizer") %>% ggplot() +
+  geom_bar(aes(x = Family, fill = Family)) +
+  labs(title = "Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x=element_text(angle=90, hjust=1))
+#>>>>>>> Stashed changes
 Colonization_across_families_plot
 # Save plot
 save_plot(paste0(outPath, "/Colonization_across_families_plot.png"), Colonization_across_families_plot, base_width = 20, base_height = 10)
@@ -332,6 +342,38 @@ pre_post_colonization_plot
 # Save plot
 save_plot(paste0(outPath, "/pre_post_colonization_plot.png"), pre_post_colonization_plot, base_width = 15, base_height = 10)
 
+# Reshape the data to long format for pre and post conditions
+result_data_long <- datae0041meta %>%
+  pivot_longer(cols = c(Colonization_Preabx, Colonization_PostabxV1, Colonization_PostabxV2),
+               names_to = "colonization_stage",
+               values_to = "colonized") %>%
+  filter(colonized) %>%
+  group_by(Family, colonization_stage) %>%
+  summarize(number_of_colonizers = n(), .groups = 'drop')
+
+# Update the factor levels for colonization_stage
+result_data_long$colonization_stage <- factor(result_data_long$colonization_stage, 
+                                              levels = c("Colonization_Preabx", "Colonization_PostabxV1", "Colonization_PostabxV2"),
+                                              labels = c("Pre-Abx", "Post-Abx V1", "Post-Abx V2"))
+
+# Create the plot
+pre_post_colonization_plot <- result_data_long %>%
+  ggplot(aes(x = Family, y = number_of_colonizers, fill = Family)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ colonization_stage) +
+  labs(title = "Number of Colonizers Pre and Post Antibiotic Treatment",
+       x = "Family",
+       y = "Number of Colonizers") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Display the plot
+pre_post_colonization_plot
+
+# Save plot
+save_plot(paste0(outPath, "/pre_post_colonization_plot.png"), pre_post_colonization_plot, base_width = 15, base_height = 10)
+
 # Distribution of donor_colonizer_type per donor and corresponding wells
 donor_colonizer_distribution_plot <- datae0041meta %>% ggplot() +
   geom_bar(aes(x = donor_colonizer_type, fill = donor_colonizer_type), position = "dodge", show.legend = FALSE) +
@@ -394,6 +436,86 @@ Colonization_combo_across_families_faceted_normalized_plot <- result_data_normal
 Colonization_combo_across_families_faceted_normalized_plot
 # Save plot
 save_plot(paste0(outPath, "/Colonization_combo_across_families_faceted_normalized_plot.png"), Colonization_combo_across_families_faceted_normalized_plot, base_width = 15, base_height = 10)
+
+#*******
+#bar plot with # of colonizers that colonized the pre vs post abx comm; x-axis families and y-axis 
+#number of colonizers ; facets for pre, post v1, and v2
+# Reshape the data to long format for faceting by pre and post conditions
+result_data_long <- result_data_normalized %>%
+  pivot_longer(cols = c(Colonization_Preabx, Colonization_PostabxV1),
+               names_to = "colonization_stage",
+               values_to = "colonized") %>%
+  filter(colonized) %>%
+  group_by(Family, colonization_stage) %>%
+  summarize(number_of_colonizers = n(), .groups = 'drop')
+
+# Update the factor levels for colonization_stage
+result_data_long$colonization_stage <- factor(result_data_long$colonization_stage, 
+                                              levels = c("Colonization_Preabx", "Colonization_PostabxV1"),
+                                              labels = c("Pre-Abx", "Post-Abx"))
+
+# Create the plot
+Colonization_normalized_families_comm_plot <- result_data_long %>%
+  ggplot(aes(x = Family, y = number_of_colonizers, fill = Family)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ colonization_stage) +
+  labs(title = "Number of Colonizers Pre and Post Antibiotic Treatment",
+       x = "Family",
+       y = "Number of Colonizers") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_normalized_families_comm_plot
+# Save plot
+save_plot(paste0(outPath, "/Colonization_normalized_families_comm_plot.png"), Colonization_normalized_families_comm_plot, base_width = 15, base_height = 10)
+
+# Plotting difference in colonizers
+# Reshape the data to long format for pre and post conditions
+result_data_long <- result_data_normalized %>%
+  pivot_longer(cols = c(Colonization_Preabx, Colonization_PostabxV1),
+               names_to = "colonization_stage",
+               values_to = "colonized") %>%
+  filter(colonized) %>%
+  group_by(Family, colonization_stage) %>%
+  summarize(number_of_colonizers = n(), .groups = 'drop')
+
+# Spread the data to wide format to calculate differences
+result_data_wide <- result_data_long %>%
+  pivot_wider(names_from = colonization_stage, values_from = number_of_colonizers, values_fill = list(number_of_colonizers = 0)) %>%
+  mutate(difference_in_colonizers = `Colonization_PostabxV1` - `Colonization_Preabx`)
+
+# Update the factor levels for consistency
+result_data_wide$Family <- factor(result_data_wide$Family)
+
+# Create the plot for the difference in colonizers
+Colonization_difference_families_comm_plot <- result_data_wide %>%
+  ggplot(aes(x = Family, y = difference_in_colonizers, fill = Family)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Difference in Number of Colonizers Pre and Post Antibiotic Treatment",
+       x = "Family",
+       y = "Difference in Number of Colonizers (Post - Pre)") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_difference_families_comm_plot
+
+# Save plot
+save_plot(paste0(outPath, "/Colonization_difference_families_comm_plot.png"), Colonization_difference_families_comm_plot, base_width = 15, base_height = 10)
+
+#new version with just conditional
+# Plot the filtered data
+Colonization_conditional_faceted_normalized_plot <- result_data_normalized %>% filter(donor_colonizer_type == "Conditional_Colonizer") %>% ggplot() +
+  geom_bar(aes(x = donor_colonizer_type, fill = Family, y = Normalized_Count), stat = "identity", position = "dodge") +
+  facet_wrap(~Family) +
+  labs(title = "Normalized Colonization Status Across Families",
+       x = "Donor Colonizer Type",
+       y = "Normalized Count") +
+  scale_fill_manual(values = KCHpalettee0041vector) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+Colonization_conditional_faceted_normalized_plot
+# Save plot
+save_plot(paste0(outPath, "/Colonization_conditional_faceted_normalized_plot.png"), Colonization_conditional_faceted_normalized_plot, base_width = 15, base_height = 10)
 
 # ORRR
 # Nevermind this is wronggg
